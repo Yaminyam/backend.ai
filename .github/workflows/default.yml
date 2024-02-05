@@ -405,7 +405,7 @@ jobs:
     uses: ./.github/workflows/sbom.yml
 
   make-final-release:
-    needs: [build-wheels, build-sbom]
+    needs: [build-sbom]
     if: github.event_name == 'push' && contains(github.ref, 'refs/tags/')
     runs-on: ubuntu-latest
     environment: deploy-to-pypi
@@ -434,16 +434,6 @@ jobs:
       run: |
         python ./scripts/extract-release-changelog.py
         python ./scripts/determine-release-type.py
-    - name: Download wheels
-      uses: actions/download-artifact@v3
-      with:
-        name: wheels
-        path: dist
-    - name: Download local-proxy
-      uses: actions/download-artifact@v3
-      with:
-        name: local-proxy
-        path: dist
     - name: Download SBOM report
       uses: actions/download-artifact@v3
       with:
