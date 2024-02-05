@@ -437,11 +437,6 @@ jobs:
       with:
         name: wheels
         path: dist
-    - name: Download scies
-      uses: actions/download-artifact@v3
-      with:
-        name: scies
-        path: dist
     - name: Download local-proxy
       uses: actions/download-artifact@v3
       with:
