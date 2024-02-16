@@ -38,6 +38,7 @@ jobs:
           GH_TOKEN: ${{ github.token }}
       - uses: actions/checkout@v4
       - name: Get target milestones
+        id: milestones
         run: |
           milestones=$(gh api /repos/:owner/:repo/milestones --jq '.[].title')
           
@@ -50,16 +51,15 @@ jobs:
           
           sort_milestones=($(printf "%s\n" "${milestones[@]}" | sort))
           for i in "${!sort_milestones[@]}"; do
-            echo "$i: ${sort_milestones[$i]}"
             if [[ "${sort_milestones[$i]}" == "$target_milestone" ]]; then
               target_milestones=("${sort_milestones[@]:0:$((i+1))}")
               break
             fi
           done
           echo "matrix={\"milestone\":[$(printf "%s," "${target_milestones[@]}")]}" >> $GITHUB_OUTPUT
-          echo $matrix
         env:
-          GH_TOKEN: ${{ github.token }}  
+          GH_TOKEN: ${{ github.token }}
+      - run: echo {{ steps.milestones.outputs.matrix }}
 
   backport:
     runs-on: ubuntu-latest
