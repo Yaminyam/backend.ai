@@ -45,13 +45,14 @@ jobs:
           done
           
           sort_milestones=($(printf "%s\n" "${milestones[@]}" | sort))
+          echo $sort_milestones
           for i in "${!sort_milestones[@]}"; do
             if [[ "${sort_milestones[$i]}" == "$target_milestone" ]]; then
               target_milestones=("${sort_milestones[@]:0:$((i+1))}")
               break
             fi
           done
-          echo "matrix={\"milestone\":[$(printf "%s," "${target_milestones[@]}")]}" >> $GITHUB_OUTPUT
+          echo "matrix={\"milestone\":[$(printf "\"%s,\"" "${target_milestones[@]}")]}" >> $GITHUB_OUTPUT
         env:
           GH_TOKEN: ${{ github.token }}
       - run: echo ${{ steps.milestones.outputs.matrix }}
