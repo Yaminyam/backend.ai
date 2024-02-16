@@ -11,6 +11,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - name: Extract pr_number from commit message
+        id: commit
         run: |
           latest_commit=$(git rev-parse HEAD)  # 현재 repository의 가장 최근 commit 해시 가져오기
           echo "latest_commit=$latest_commit" >> $GITHUB_OUTPUT
@@ -22,40 +23,35 @@ jobs:
           echo $latest_commit
       - name: Check if this is a merged pr commit
         run: |
-          echo $pr_number
-          if [[ -z "$pr_number" ]]; then
+          echo ${{ steps.commit.outputs.pr_number }}
+          if [[ -z "${{ steps.commit.outputs.pr_number }}" ]]; then
             echo "This is not a merged pr commit."
             exit 0
           fi
+          # 실패표시없이 종료시키는 방법으로 수정
       - name: Get latest release
         run: |
           latest_release=$(cat VERSION | grep -oP "\d+\.\d+")
           echo "latest_release=$latest_release" >> $GITHUB_OUTPUT
       - name: Get target milestone
         run: |
-          echo $pr_number
-          tartget_milestone=$(gh pr view $pr_number --json milestone --jq .milestone.title)
+          echo ${{ steps.commit.outputs.pr_number }}
+          tartget_milestone=$(gh pr view ${{ steps.commit.outputs.pr_number }} --json milestone --jq .milestone.title)
         env:
           GH_TOKEN: ${{ github.token }}
       - uses: actions/checkout@v4
-      - name: Get milestone list
+      - name: Get target milestones
         run: |
           milestones=$(gh api /repos/:owner/:repo/milestones --jq '.[].title')
-        env:
-          GH_TOKEN: ${{ github.token }}
-      - name: Remove Backlog from milestone list
-        run: |
+          
           milestones=($milestones)
           for i in "${!milestones[@]}"; do
             if [[ "${milestones[$i]}" == "Backlog" ]]; then
               unset 'milestones[$i]'
             fi
           done
-      - name: Sort milestone list
-        run: |
+          
           sort_milestones=($(printf "%s\n" "${milestones[@]}" | sort))
-      - name: Get target milestones
-        run: |
           for i in "${!sort_milestones[@]}"; do
             echo "$i: ${sort_milestones[$i]}"
             if [[ "${sort_milestones[$i]}" == "$target_milestone" ]]; then
@@ -64,6 +60,8 @@ jobs:
             fi
           done
           echo "matrix={\"milestone\":[$(printf "%s," "${target_milestones[@]}")]}" >> $GITHUB_OUTPUT
+        env:
+          GH_TOKEN: ${{ github.token }}  
 
   backport:
     runs-on: ubuntu-latest
@@ -77,7 +75,7 @@ jobs:
       - name: Cherry-pick
         run: |
           git cherry-pick ${{ needs.backport-target-branch.outputs.latest_commit }}
-          git commit --amend -m "${{ needs.backport-target-branch.outputs.commit_message }} Backported-from: main($latest_release) Backported-to: ${{ matrix.milestone }} Backport-of: ${{ needs.backport-target-branch.outputs.pr_number }}"
+          git commit --amend -m "${{ needs.backport-target-branch.outputs.commit_message }} Backported-from: main(${{ needs.backport-target-branch.outputs.latest_release }}) Backported-to: ${{ matrix.milestone }} Backport-of: ${{ needs.backport-target-branch.outputs.pr_number }}"
       - name: Create Bakport PR
         uses: peter-evans/create-pull-request@v6
         with:
