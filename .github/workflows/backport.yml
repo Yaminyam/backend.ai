@@ -59,7 +59,7 @@ jobs:
           echo "matrix={\"milestone\":[$(printf "%s," "${target_milestones[@]}")]}" >> $GITHUB_OUTPUT
         env:
           GH_TOKEN: ${{ github.token }}
-      - run: echo {{ steps.milestones.outputs.matrix }}
+      - run: echo ${{ steps.milestones.outputs.matrix }}
 
   backport:
     runs-on: ubuntu-latest
