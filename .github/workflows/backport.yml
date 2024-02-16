@@ -30,16 +30,11 @@ jobs:
         run: |
           latest_release=$(cat VERSION | grep -oP "\d+\.\d+")
           echo "latest_release=$latest_release" >> $GITHUB_OUTPUT
-      - name: Get target milestone
-        run: |
-          echo ${{ steps.commit.outputs.pr_number }}
-          tartget_milestone=$(gh pr view ${{ steps.commit.outputs.pr_number }} --json milestone --jq .milestone.title)
-        env:
-          GH_TOKEN: ${{ github.token }}
-      - uses: actions/checkout@v4
       - name: Get target milestones
         id: milestones
         run: |
+          target_milestone=$(gh pr view ${{ steps.commit.outputs.pr_number }} --json milestone --jq .milestone.title)
+        
           milestones=$(gh api /repos/:owner/:repo/milestones --jq '.[].title')
           
           milestones=($milestones)
