@@ -52,7 +52,7 @@ jobs:
               break
             fi
           done
-          echo "matrix={\"milestone\":[$(printf "\"%s,\"" "${target_milestones[@]}")]}" >> $GITHUB_OUTPUT
+          echo "matrix={\"milestone\":[$(printf "\"%s\"," "${target_milestones[@]}")]}" >> $GITHUB_OUTPUT
         env:
           GH_TOKEN: ${{ github.token }}
       - run: echo ${{ steps.milestones.outputs.matrix }}
