@@ -30,10 +30,14 @@ jobs:
       - name: Get target milestone
         run: |
           tartget_milestone=$(gh pr view $pr_number --json milestone.title --jq .milestone.title)
+        env:
+          GH_TOKEN: ${{ github.token }}
       - uses: actions/checkout@v4
       - name: Get milestone list
         run: |
           milestones=$(gh api /repos/:owner/:repo/milestones --jq '.[].title')
+        env:
+          GH_TOKEN: ${{ github.token }}
       - name: Remove Backlog from milestone list
         run: |
           milestones=($milestones)
@@ -81,3 +85,5 @@ jobs:
           assignees: ${{ github.actor }}
       - name: Enable auto-merge
         run: gh pr merge ${{ needs.backport-target-branch.outputs.pr_number }} --auto
+        env:
+          GH_TOKEN: ${{ github.token }}
