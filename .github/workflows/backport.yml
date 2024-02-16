@@ -44,10 +44,10 @@ jobs:
               unset 'milestones[$i]'
             fi
           done
-          echo $milestones
+          echo "${milestones[@]}"
           
-          sort_milestones=($(printf "%s\n" "${milestones[@]}" | sort))
-          echo $sort_milestones
+          sort_milestones=($(printf "%s\n" "${milestones[@]}" | sort -r))
+          echo "${sort_milestones[@]}"
           for i in "${!sort_milestones[@]}"; do
             if [[ "${sort_milestones[$i]}" == "$target_milestone" ]]; then
               target_milestones=("${sort_milestones[@]:0:$((i+1))}")
