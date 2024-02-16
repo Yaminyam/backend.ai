@@ -22,6 +22,7 @@ jobs:
           echo $latest_commit
       - name: Check if this is a merged pr commit
         run: |
+          echo $pr_number
           if [[ -z "$pr_number" ]]; then
             echo "This is not a merged pr commit."
             exit 0
@@ -32,6 +33,7 @@ jobs:
           echo "latest_release=$latest_release" >> $GITHUB_OUTPUT
       - name: Get target milestone
         run: |
+          echo $pr_number
           tartget_milestone=$(gh pr view $pr_number --json milestone --jq .milestone.title)
         env:
           GH_TOKEN: ${{ github.token }}
