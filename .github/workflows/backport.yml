@@ -19,12 +19,8 @@ jobs:
           echo "commit_message=$commit_message" >> $GITHUB_OUTPUT
           pr_number=$(echo $commit_message | grep -oP "\(#\d+\)$" | grep -oP "\d+")  # commit 메시지에서 pr 번호 가져오기
           echo "pr_number=$pr_number" >> $GITHUB_OUTPUT
-          echo $pr_number
-          echo $commit_message
-          echo $latest_commit
       - name: Check if this is a merged pr commit
         run: |
-          echo ${{ steps.commit.outputs.pr_number }}
           if [[ -z "${{ steps.commit.outputs.pr_number }}" ]]; then
             echo "This is not a merged pr commit."
             exit 0
@@ -61,6 +57,7 @@ jobs:
             fi
           done
           echo "matrix={\"milestone\":[$(printf "%s," "${target_milestones[@]}")]}" >> $GITHUB_OUTPUT
+          echo $matrix
         env:
           GH_TOKEN: ${{ github.token }}  
 
