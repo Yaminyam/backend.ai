@@ -58,6 +58,8 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
       - run: echo ${{ steps.milestones.outputs.matrix }}
+      - name: Setup tmate session
+        uses: mxschmitt/action-tmate@v3
 
   backport:
     runs-on: ubuntu-latest
