@@ -8,6 +8,8 @@ on:
 jobs:
   backport-target-branch:
     runs-on: ubuntu-latest
+    outputs:
+      matrix: ${{ steps.milestones.outputs.matrix }}
     steps:
       - uses: actions/checkout@v4
       - name: Extract pr_number from commit message
