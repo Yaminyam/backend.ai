@@ -54,12 +54,13 @@ jobs:
               break
             fi
           done
-          echo "matrix=$(jq -nc '{include: $ARGS.positional | map_values({milestone: .})}' --args "${target_milestones[@]}")" >> $GITHUB_OUTPUT
+          matrix=$(jq -nc '{include: $ARGS.positional | map_values({milestone: .})}' --args "${target_milestones[@]}")
+          matrix=$(sed 's/\"//g' <<< $matrix)
+          matrix=$(sed 's/,/, /g' <<< $matrix)
+          echo "matrix=$matrix" >> $GITHUB_OUTPUT
         env:
           GH_TOKEN: ${{ github.token }}
       - run: echo ${{ steps.milestones.outputs.matrix }}
-      - name: Setup tmate session
-        uses: mxschmitt/action-tmate@v3
 
   backport:
     runs-on: ubuntu-latest
