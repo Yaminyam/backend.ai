@@ -54,7 +54,7 @@ jobs:
               break
             fi
           done
-          echo "matrix={\"include\":[$(printf "{\"milestone\":\"%s\"}," "${target_milestones[@]}")]}" >> $GITHUB_OUTPUT
+          echo "matrix=$(jq -nc '{include: $ARGS.positional | map_values({milestone: .})}' --args "${target_milestones[@]}")" >> $GITHUB_OUTPUT
         env:
           GH_TOKEN: ${{ github.token }}
       - run: echo ${{ steps.milestones.outputs.matrix }}
