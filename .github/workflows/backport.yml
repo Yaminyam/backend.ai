@@ -77,7 +77,7 @@ jobs:
       - name: Cherry-pick
         run: |
           git fetch origin main --depth=1
-          git cherry-pick ${{ needs.backport-target-branch.outputs.latest_commit }}
+          git cherry-pick --strategy-option=theirs ${{ needs.backport-target-branch.outputs.latest_commit }}
           git commit --amend -m "${{ needs.backport-target-branch.outputs.commit_message }} Backported-from: main(${{ needs.backport-target-branch.outputs.latest_release }}) Backported-to: ${{ matrix.milestone }} Backport-of: ${{ needs.backport-target-branch.outputs.pr_number }}"
       - name: Create Bakport PR
         uses: peter-evans/create-pull-request@v6
