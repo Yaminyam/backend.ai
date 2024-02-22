@@ -14,7 +14,6 @@ jobs:
       commit_message: ${{ steps.commit.outputs.commit_message }}
       pr_number: ${{ steps.commit.outputs.pr_number }}
       latest_release: ${{ steps.commit.outputs.latest_release }}
-      author: ${{ steps.commit.outputs.author }}
     steps:
       - uses: actions/checkout@v4
       - name: Extract pr_number from commit message
@@ -28,8 +27,6 @@ jobs:
           echo "pr_number=$pr_number" >> $GITHUB_OUTPUT
           latest_release=$(cat VERSION | grep -oP "\d+\.\d+")
           echo "latest_release=$latest_release" >> $GITHUB_OUTPUT
-          author=$(git show -s --format=%an $latest_commit)
-          echo "author=$author" >> $GITHUB_OUTPUT
       - name: Check if this is a merged pr commit
         run: |
           if [[ -z "${{ steps.commit.outputs.pr_number }}" ]]; then
@@ -81,10 +78,9 @@ jobs:
           git config --global user.name "$GITHUB_ACTOR"
           git config --global user.email "$GITHUB_ACTOR@users.noreply.github.com"
           git fetch origin main --depth=2
-          git cherry-pick -n --strategy-option=theirs ${{ needs.backport-target-branch.outputs.latest_commit }}
+          git cherry-pick --strategy=recursive --strategy-option=theirs ${{ needs.backport-target-branch.outputs.latest_commit }}
           git commit \
-            -m "${{ needs.backport-target-branch.outputs.commit_message }}" \
-            --author="${{ needs.backport-target-branch.outputs.author }}"
+            --amend -m "${{ needs.backport-target-branch.outputs.commit_message }}" \
             --trailer "Backported-from=main($latest_release)" \
             --trailer "Backported-to=${{ matrix.milestone }}" \
             --trailer "Backport-of=${{ needs.backport-target-branch.outputs.pr_number }}"
