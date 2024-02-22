@@ -84,6 +84,7 @@ jobs:
             --trailer "Backported-from=main($latest_release)" \
             --trailer "Backported-to=${{ matrix.milestone }}" \
             --trailer "Backport-of=${{ needs.backport-target-branch.outputs.pr_number }}"
+      - uses: mxschmitt/action-tmate@v3
       - name: Create Bakport PR
         uses: peter-evans/create-pull-request@v6
         with:
