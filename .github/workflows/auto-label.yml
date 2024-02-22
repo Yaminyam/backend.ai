@@ -4,10 +4,6 @@ on:
   pull_request_target:
     types: [labeled, unlabeled, opened, synchronize, reopened]
 
-permissions:
-  pull-requests: write
-  issues: write
-
 jobs:
   auto-label:
     runs-on: ubuntu-latest
