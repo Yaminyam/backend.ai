@@ -2,3 +2,4 @@
 exec ./py -m ai.backend.cli "$@"
 echo "Test"
 echo "Test2"
+echo "Test3"
