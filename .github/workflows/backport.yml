@@ -19,6 +19,7 @@ jobs:
       - name: Extract pr_number from commit message
         id: commit
         run: |
+          set -ex
           latest_commit=$(git rev-parse HEAD)  # 현재 repository의 가장 최근 commit 해시 가져오기
           echo "latest_commit=$latest_commit" >> $GITHUB_OUTPUT
           commit_message=$(git show -s --format=%B $latest_commit)  # 최근 commit의 메시지 가져오기
