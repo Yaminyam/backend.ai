@@ -93,12 +93,16 @@ jobs:
           gh pr comment ${{ needs.backport-target-branch.outputs.pr_number }} -b "Backport to ${{ matrix.milestone }} is failed. Please backport manually."
         env:
           GH_TOKEN: ${{ github.token }}
+      - id: pr_title
+        run: |
+          commit_message_without_description=echo ${{ needs.backport-target-branch.outputs.commit_message }} | head -n 1
+          echo "commit_message_without_description=$commit_message_without_description" >> $GITHUB_OUTPUT
       - name: Create Bakport PR
         id: pr
         uses: peter-evans/create-pull-request@v6
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
-          title: "${{ needs.backport-target-branch.outputs.commit_message }}"
+          title: "${{ steps.pr_title.outputs.commit_message_without_description }}"
           body: "This is a pr that backports #${{ needs.backport-target-branch.outputs.pr_number }} to version ${{ matrix.milestone }}."
           branch: "backport/${{ needs.backport-target-branch.outputs.pr_number }}-to-${{ matrix.milestone }}"
           base: ${{ matrix.milestone }}
