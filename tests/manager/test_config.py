@@ -23,7 +23,7 @@ def test_shared_config_flatten():
         },
     )
     pprint(data)
-    assert len(data) == 5
+    assert len(data) == 6
     assert data["abc/def"] == "https://example.com"
     assert data["abc/def/normal"] == "okay"
     assert data["abc/def/aa%3Abb%2Fcc/f1"] == "hello"
