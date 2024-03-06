@@ -95,7 +95,7 @@ jobs:
           GH_TOKEN: ${{ github.token }}
       - id: pr_title
         run: |
-          commit_message_without_description=echo ${{ needs.backport-target-branch.outputs.commit_message }} | head -n 1
+          commit_message_without_description=echo "${{ needs.backport-target-branch.outputs.commit_message }}" | head -n 1
           echo "commit_message_without_description=$commit_message_without_description" >> $GITHUB_OUTPUT
       - name: Create Bakport PR
         id: pr
