@@ -16,7 +16,6 @@ jobs:
       latest_release: ${{ steps.commit.outputs.latest_release }}
     steps:
       - uses: actions/checkout@v4
-      - uses: mxschmitt/action-tmate@v3
       - name: Extract pr_number from commit message
         id: commit
         run: |
