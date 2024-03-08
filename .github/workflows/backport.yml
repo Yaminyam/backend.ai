@@ -108,7 +108,7 @@ jobs:
           base: ${{ matrix.milestone }}
           labels: backport
           assignees: ${{ github.actor }}
-      - run: sleep 10
+      - run: sleep 3
       - name: Enable auto-merge
         if: ${{ steps.pr.outputs.pull-request-number }}
         run: GH_DEBUG=api gh pr merge ${{ steps.pr.outputs.pull-request-number }} --auto --squash
