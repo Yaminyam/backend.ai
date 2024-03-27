@@ -108,9 +108,31 @@ jobs:
           base: ${{ matrix.milestone }}
           labels: backport
           assignees: ${{ github.actor }}
-      - run: sleep 1
+      - id: pr_id
+        run: |
+          pr_id=$(gh pr graphql -f query='
+            query ($pr_number: Int!) {
+              repository(owner: "lablup", name: "backend.ai") {
+                pullRequest(number: $pr_number) {
+                  id
+                }
+              }
+            }
+          ' -f pr_number="${{ steps.pr.outputs.pull-request-number }}" | jq -r '.data.repository.pullRequest.id')
+          echo "pr_id=$pr_id" >> $GITHUB_OUTPUT
       - name: Enable auto-merge
         if: ${{ steps.pr.outputs.pull-request-number }}
-        run: GH_DEBUG=api gh pr merge ${{ steps.pr.outputs.pull-request-number }} --auto --squash
+        run: |
+          gh api graphql -f query='
+            mutation ($pullRequestId: ID!, $mergeMethod: PullRequestMergeMethod!) {
+              enablePullRequestAutoMerge(input: {pullRequestId: $pullRequestId, mergeMethod: $mergeMethod}) {
+                pullRequest {
+                  autoMergeRequest {
+                    enabled
+                  }
+                }
+              }
+            }
+          ' -f pullRequestId="${{ steps.pr_id.outputs.pr_id }}" -f mergeMethod="SQUASH"
         env:
           GH_TOKEN: ${{ secrets.BACKPORT_PAT }}
