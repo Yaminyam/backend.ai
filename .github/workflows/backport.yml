@@ -31,6 +31,8 @@ jobs:
           echo "latest_release=$latest_release" >> $GITHUB_OUTPUT
           author=$(git show -s --format=%an $latest_commit)
           echo "author=$author" >> $GITHUB_OUTPUT
+          author_email=$(git show -s --format=%ae $latest_commit)
+          echo "author_email=$author_email" >> $GITHUB_OUTPUT
       - name: Check if this is a merged pr commit
         run: |
           if [[ -z "${{ steps.commit.outputs.pr_number }}" ]]; then
@@ -66,7 +68,6 @@ jobs:
           echo "matrix=$matrix" >> $GITHUB_OUTPUT
         env:
           GH_TOKEN: ${{ github.token }}
-      - run: echo ${{ steps.milestones.outputs.matrix }}
 
   backport:
     runs-on: ubuntu-latest
@@ -80,7 +81,7 @@ jobs:
       - name: Cherry-pick
         run: |
           git config --global user.name "${{ needs.backport-target-branch.outputs.author }}"
-          git config --global user.email "${{ needs.backport-target-branch.outputs.author }}@users.noreply.github.com"
+          git config --global user.email "${{ needs.backport-target-branch.outputs.author_email }}"
           git fetch origin main --depth=2
           git cherry-pick --strategy=recursive --strategy-option=theirs ${{ needs.backport-target-branch.outputs.latest_commit }}
           git commit \
