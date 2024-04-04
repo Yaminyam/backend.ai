@@ -133,7 +133,7 @@ jobs:
               enablePullRequestAutoMerge(input: {pullRequestId: $pullRequestId, mergeMethod: $mergeMethod}) {
                 pullRequest {
                   autoMergeRequest {
-                    enabled
+                    enabledAt
                   }
                 }
               }
