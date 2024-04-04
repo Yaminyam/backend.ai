@@ -14,6 +14,8 @@ jobs:
       commit_message: ${{ steps.commit.outputs.commit_message }}
       pr_number: ${{ steps.commit.outputs.pr_number }}
       latest_release: ${{ steps.commit.outputs.latest_release }}
+      author: ${{ steps.commit.outputs.author }}
+      author_email: ${{ steps.commit.outputs.author_email }}
     steps:
       - uses: actions/checkout@v4
       - name: Extract pr_number from commit message
