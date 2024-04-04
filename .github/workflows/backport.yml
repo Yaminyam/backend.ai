@@ -140,6 +140,6 @@ jobs:
                 }
               }
             }
-          ' -f pullRequestId="${{ steps.pr_id.outputs.pr_id }}" -f mergeMethod="SQUASH"
+          ' -F pullRequestId=${{ steps.pr_id.outputs.pr_id }} -f mergeMethod="SQUASH"
         env:
           GH_TOKEN: ${{ secrets.BACKPORT_PAT }}
