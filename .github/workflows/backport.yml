@@ -106,7 +106,7 @@ jobs:
         uses: peter-evans/create-pull-request@v6
         with:
           token: ${{ secrets.BACKPORT_PAT }}
-          author: "${{ needs.backport-target-branch.outputs.author }}"
+          author: "${{ needs.backport-target-branch.outputs.author }} <${{ needs.backport-target-branch.outputs.author_email }}>"
           title: "${{ steps.pr_title.outputs.commit_message_without_description }}"
           body: "This is a pr that backports #${{ needs.backport-target-branch.outputs.pr_number }} to version ${{ matrix.milestone }}."
           branch: "backport/${{ needs.backport-target-branch.outputs.pr_number }}-to-${{ matrix.milestone }}"
