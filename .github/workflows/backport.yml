@@ -115,7 +115,7 @@ jobs:
           assignees: ${{ needs.backport-target-branch.outputs.author }}
       - id: pr_id
         run: |
-          pr_id=$(gh pr graphql -f query='
+          pr_id=$(gh api graphql -f query='
             query ($pr_number: Int!) {
               repository(owner: "lablup", name: "backend.ai") {
                 pullRequest(number: $pr_number) {
