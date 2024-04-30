@@ -117,7 +117,7 @@ jobs:
         run: |
           pr_id=$(gh api graphql -f query='
             query ($pr_number: Int!) {
-              repository(owner: "lablup", name: "backend.ai") {
+              repository(owner: "Yaminyam", name: "backend.ai") {
                 pullRequest(number: $pr_number) {
                   id
                 }
