@@ -101,8 +101,10 @@ jobs:
         run: |
           commit_head=$(echo "${{ needs.backport-target-branch.outputs.commit_message }}" | head -n 1)
           echo "commit_head=$commit_head" >> $GITHUB_OUTPUT
-          commit_body=$(echo "${{ needs.backport-target-branch.outputs.commit_message }}" | tail -n +2)
-          echo "commit_body=$commit_body" >> $GITHUB_OUTPUT
+          commit_body=$(echo "${{ needs.backport-target-branch.outputs.commit_message }}" | tail -n +3)
+          echo "commit_body<<EOF" >> $GITHUB_OUTPUT
+          echo "$commit_body" >> $GITHUB_OUTPUT
+          echo "EOF" >> $GITHUB_OUTPUT
       - name: Create Bakport PR
         id: pr
         uses: peter-evans/create-pull-request@v6
