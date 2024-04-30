@@ -132,7 +132,17 @@ jobs:
         run: |
           gh api graphql -f query='
             mutation ($pullRequestId: ID!, $mergeMethod: PullRequestMergeMethod!) {
-              enablePullRequestAutoMerge(input: {pullRequestId: $pullRequestId, mergeMethod: $mergeMethod}) {
+              enablePullRequestAutoMerge(input: {
+                pullRequestId: $pullRequestId,
+                mergeMethod: $mergeMethod,
+                commitBody: """
+                ${{ needs.backport-target-branch.outputs.commit_message }}
+                Backported-from=main (${{ needs.backport-target-branch.outputs.latest_release }})
+                Backported-to=${{ matrix.milestone }}
+                Backport-of=${{ needs.backport-target-branch.outputs.pr_number }}
+                """,
+                commitHeadline: "${{ steps.pr_title.outputs.commit_message_without_description }} (${{ steps.pr.outputs.pull-request-number }})"
+              }) {
                 pullRequest {
                   autoMergeRequest {
                     enabledAt
