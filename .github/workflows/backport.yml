@@ -123,7 +123,7 @@ jobs:
                 }
               }
             }
-          ' -f pr_number=${{ steps.pr.outputs.pull-request-number }} | jq -r '.data.repository.pullRequest.id')
+          ' -F pr_number=${{ steps.pr.outputs.pull-request-number }} | jq -r '.data.repository.pullRequest.id')
           echo "pr_id=$pr_id" >> $GITHUB_OUTPUT
         env:
           GH_TOKEN: ${{ secrets.BACKPORT_PAT }}
