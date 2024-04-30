@@ -118,14 +118,14 @@ jobs:
       - id: pr_id
         run: |
           pr_id=$(gh api graphql -f query='
-            query ($pr_number: Int!) {
-              repository(owner: "Yaminyam", name: "backend.ai") {
+            query ($pr_number: Int!, $owner: String!, $name: String!) {
+              repository(owner: $owner, name: $name) {
                 pullRequest(number: $pr_number) {
                   id
                 }
               }
             }
-          ' -F pr_number=${{ steps.pr.outputs.pull-request-number }} | jq -r '.data.repository.pullRequest.id')
+          ' -F pr_number=${{ steps.pr.outputs.pull-request-number }} -f owner=${{ github.repository_owner }} -f name=${{ github.event.repository.name }} | jq -r '.data.repository.pullRequest.id')
           echo "pr_id=$pr_id" >> $GITHUB_OUTPUT
         env:
           GH_TOKEN: ${{ secrets.BACKPORT_PAT }}
