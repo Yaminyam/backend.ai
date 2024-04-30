@@ -99,15 +99,17 @@ jobs:
           GH_TOKEN: ${{ github.token }}
       - id: pr_title
         run: |
-          commit_message_without_description=$(echo "${{ needs.backport-target-branch.outputs.commit_message }}" | head -n 1)
-          echo "commit_message_without_description=$commit_message_without_description" >> $GITHUB_OUTPUT
+          commit_head=$(echo "${{ needs.backport-target-branch.outputs.commit_message }}" | head -n 1)
+          echo "commit_head=$commit_head" >> $GITHUB_OUTPUT
+          commit_body=$(echo "${{ needs.backport-target-branch.outputs.commit_message }}" | tail -n +2)
+          echo "commit_body=$commit_body" >> $GITHUB_OUTPUT
       - name: Create Bakport PR
         id: pr
         uses: peter-evans/create-pull-request@v6
         with:
           token: ${{ secrets.BACKPORT_PAT }}
           author: "${{ needs.backport-target-branch.outputs.author }} <${{ needs.backport-target-branch.outputs.author_email }}>"
-          title: "${{ steps.pr_title.outputs.commit_message_without_description }}"
+          title: "${{ steps.pr_title.outputs.commit_head }}"
           body: "This is a pr that backports #${{ needs.backport-target-branch.outputs.pr_number }} to version ${{ matrix.milestone }}."
           branch: "backport/${{ needs.backport-target-branch.outputs.pr_number }}-to-${{ matrix.milestone }}"
           base: ${{ matrix.milestone }}
@@ -136,12 +138,12 @@ jobs:
                 pullRequestId: $pullRequestId,
                 mergeMethod: $mergeMethod,
                 commitBody: """
-                ${{ needs.backport-target-branch.outputs.commit_message }}
-                Backported-from=main (${{ needs.backport-target-branch.outputs.latest_release }})
-                Backported-to=${{ matrix.milestone }}
-                Backport-of=${{ needs.backport-target-branch.outputs.pr_number }}
+                ${{ steps.pr_title.outputs.commit_body }}
+                Backported-from: main (${{ needs.backport-target-branch.outputs.latest_release }})
+                Backported-to: ${{ matrix.milestone }}
+                Backport-of: ${{ needs.backport-target-branch.outputs.pr_number }}
                 """,
-                commitHeadline: "${{ steps.pr_title.outputs.commit_message_without_description }} (${{ steps.pr.outputs.pull-request-number }})"
+                commitHeadline: "${{ steps.pr_title.outputs.commit_head }} (#${{ steps.pr.outputs.pull-request-number }})"
               }) {
                 pullRequest {
                   autoMergeRequest {
