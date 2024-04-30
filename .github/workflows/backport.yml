@@ -137,7 +137,7 @@ jobs:
           gh api graphql -f query='
             mutation ($pullRequestId: ID!, $mergeMethod: PullRequestMergeMethod!) {
               enablePullRequestAutoMerge(input: {
-                authorEmail: ${{ needs.backport-target-branch.outputs.author_email }},
+                authorEmail: "${{ needs.backport-target-branch.outputs.author_email }}",
                 pullRequestId: $pullRequestId,
                 mergeMethod: $mergeMethod,
                 commitBody: """
