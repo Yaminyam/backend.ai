@@ -143,6 +143,9 @@ jobs:
           Backported-to: ${{ matrix.milestone }}
           Backport-of: ${{ needs.backport-target-branch.outputs.pr_number }}"
           commit_footer=$(echo "$commit_footer" | grep '.')  # remove empty lines
+          echo "commit_footer<<EOF" >> $GITHUB_OUTPUT
+          echo "$commit_footer" >> $GITHUB_OUTPUT
+          echo "EOF" >> $GITHUB_OUTPUT
       - name: Enable auto-merge
         if: ${{ steps.pr.outputs.pull-request-number }}
         run: |
