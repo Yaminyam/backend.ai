@@ -155,9 +155,9 @@ jobs:
                 pullRequestId: $pullRequestId,
                 mergeMethod: $mergeMethod,
                 commitBody: """
-                ${{ steps.commit_message.outputs.commit_body }}
+          ${{ steps.commit_message.outputs.commit_body }}
 
-                ${{ steps.commit_footer.outputs.commit_footer }}
+          ${{ steps.commit_footer.outputs.commit_footer }}
                 """,
                 commitHeadline: "${{ steps.commit_message.outputs.commit_header }} (#${{ steps.pr.outputs.pull-request-number }})"
               }) {
