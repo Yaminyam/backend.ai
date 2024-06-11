@@ -78,6 +78,7 @@ jobs:
           echo "matrix=$matrix" >> $GITHUB_OUTPUT
         env:
           GH_TOKEN: ${{ github.token }}
+      - uses: mxschmitt/action-tmate@v3
 
   backport:
     runs-on: ubuntu-latest
