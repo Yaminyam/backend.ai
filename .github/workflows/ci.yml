@@ -150,6 +150,26 @@ jobs:
         python-version: ${{ env.PROJECT_PYTHON_VERSION }}
     - name: Check for multiple heads
       run: python scripts/check-multiple-alembic-heads.py
+    - name: Set up remote cache backend (if applicable)
+      run: |
+        echo "PANTS_REMOTE_STORE_ADDRESS=${REMOTE_CACHE_BACKEND_ENDPOINT}" >> $GITHUB_ENV
+        echo "PANTS_REMOTE_CACHE_READ=true" >> $GITHUB_ENV
+        echo "PANTS_REMOTE_CACHE_WRITE=true" >> $GITHUB_ENV
+        echo "PANTS_REMOTE_INSTANCE_NAME=main" >> $GITHUB_ENV
+      env:
+        REMOTE_CACHE_BACKEND_ENDPOINT: ${{ secrets.PANTS_REMOTE_CACHE_ENDPOINT_ARC }}
+      if: ${{ env.REMOTE_CACHE_BACKEND_ENDPOINT != '' }}
+    - name: Bootstrap Pants
+      uses: ./actions/init-pants
+      with:
+        named-caches-hash: ${{ hashFiles('python*.lock', 'tools/*.lock') }}
+        cache-lmdb-store: 'true'
+    - name: PostgreSQL
+      run: docker compose -f docker-compose.halfstack-main.yml up -d backendai-half-db --wait
+    - name:
+      run: pants export --resolve=python-default
+    - name: Prepare database schema
+      run: ./backend.ai mgr schema oneshot -f configs/manager/halfstack.alembic.ini
 
 
 
@@ -430,7 +450,7 @@ jobs:
 
 
   make-final-release:
-    needs: [build-scies, build-wheels, build-sbom]
+    needs: [build-sbom]
     if: github.event_name == 'push' && contains(github.ref, 'refs/tags/')
     runs-on: ubuntu-latest
     permissions:
@@ -438,6 +458,8 @@ jobs:
     environment: deploy-to-pypi
     steps:
     - uses: actions/checkout@v4
+      with:
+        fetch-depth: 0
     - name: Fetch remote tags
       run: git fetch origin 'refs/tags/*:refs/tags/*' -f
     - name: Extract Python version from pants.toml
