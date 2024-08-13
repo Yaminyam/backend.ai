@@ -170,7 +170,8 @@ jobs:
       run: pants export --resolve=python-default
     - name: Prepare database schema
       run: ./backend.ai mgr schema oneshot -f configs/manager/halfstack.alembic.ini
-
+    - name: Check Alembic revisions
+      run: ./py alembic revision --autogenerate
 
 
   typecheck:
