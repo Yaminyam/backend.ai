@@ -166,16 +166,20 @@ jobs:
         cache-lmdb-store: 'true'
     - name: PostgreSQL
       run: docker compose -f docker-compose.halfstack-main.yml up -d backendai-half-db --wait
-    - name:
+    - name: Pants export
       run: pants export --resolve=python-default
-    - name:
+    - name: Prepare the alembic configuration file
       run: cp configs/manager/halfstack.alembic.ini alembic.ini
     - name: Prepare database schema
       run: ./backend.ai mgr schema oneshot
-    - name: Check Alembic revisions
-      run: ./py -m alembic revision --autogenerate
-    - name:
-      run: python scripts/check-alembic-revision.py
+    - name: Create a new revision
+      id: create-revision
+      run: |
+        revision=$(./py -m alembic revision --autogenerate)
+        revision_file=$(echo "$output" | grep -oP '(?<=Generating ).*\.py')
+        echo "REVISION_FILE=$revision_file" >> $GITHUB_OUTPUT
+    - name: Verify that revision is empty
+      run: python scripts/check-alembic-revision.py ${{ steps.create-revision.outputs.REVISION_FILE }}
 
 
   typecheck:
