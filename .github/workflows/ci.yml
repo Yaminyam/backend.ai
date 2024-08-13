@@ -174,6 +174,8 @@ jobs:
       run: ./backend.ai mgr schema oneshot
     - name: Check Alembic revisions
       run: ./py -m alembic revision --autogenerate
+    - name:
+      run: python scripts/check-alembic-revision.py
 
 
   typecheck:
