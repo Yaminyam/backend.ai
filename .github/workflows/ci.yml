@@ -175,7 +175,7 @@ jobs:
     - name: Create a new revision
       id: create-revision
       run: |
-        revision=$(./py -m alembic revision --autogenerate)
+        output=$(./py -m alembic revision --autogenerate)
         revision_file=$(echo "$output" | grep -oP '(?<=Generating ).*\.py')
         echo "REVISION_FILE=$revision_file" >> $GITHUB_OUTPUT
     - name: Verify that revision is empty
