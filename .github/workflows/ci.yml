@@ -173,7 +173,7 @@ jobs:
     - name: Prepare database schema
       run: ./backend.ai mgr schema oneshot
     - name: Check Alembic revisions
-      run: ./py alembic revision --autogenerate
+      run: ./py -m alembic revision --autogenerate
 
 
   typecheck:
