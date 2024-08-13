@@ -168,8 +168,10 @@ jobs:
       run: docker compose -f docker-compose.halfstack-main.yml up -d backendai-half-db --wait
     - name:
       run: pants export --resolve=python-default
+    - name:
+      run: cp configs/manager/halfstack.alembic.ini alembic.ini
     - name: Prepare database schema
-      run: ./backend.ai mgr schema oneshot -f configs/manager/halfstack.alembic.ini
+      run: ./backend.ai mgr schema oneshot
     - name: Check Alembic revisions
       run: ./py alembic revision --autogenerate
 
