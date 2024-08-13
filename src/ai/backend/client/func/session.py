@@ -16,7 +16,6 @@ from typing import (
     Mapping,
     Optional,
     Sequence,
-    Union,
     cast,
 )
 from uuid import UUID
@@ -29,7 +28,7 @@ from tqdm import tqdm
 from ai.backend.client.output.fields import session_fields
 from ai.backend.client.output.types import FieldSpec, PaginatedResult
 from ai.backend.common.arch import DEFAULT_IMAGE_ARCH
-from ai.backend.common.types import SessionTypes
+from ai.backend.common.types import ClusterMode, SessionTypes
 
 from ...cli.types import Undefined, undefined
 from ..compat import current_loop
@@ -177,12 +176,13 @@ class ComputeSession(BaseFunction):
         callback_url: Optional[str] = None,
         mounts: List[str] = None,
         mount_map: Mapping[str, str] = None,
+        mount_options: Optional[Mapping[str, Mapping[str, str]]] = None,
         envs: Mapping[str, str] = None,
         startup_command: str = None,
         resources: Mapping[str, str | int] = None,
         resource_opts: Mapping[str, str | int] = None,
         cluster_size: int = 1,
-        cluster_mode: Literal["single-node", "multi-node"] = "single-node",
+        cluster_mode: ClusterMode = ClusterMode.SINGLE_NODE,
         domain_name: str = None,
         group_name: str = None,
         bootstrap_script: str = None,
@@ -239,6 +239,7 @@ class ComputeSession(BaseFunction):
             If you want different paths, names should be absolute paths.
             The target mount path of vFolders should not overlap with the linux system folders.
             vFolders which has a dot(.) prefix in its name are not affected.
+        :param mount_options: Mapping which contains extra options for vfolder.
         :param envs: The environment variables which always bypasses the jail policy.
         :param resources: The resource specification. (TODO: details)
         :param cluster_size: The number of containers in this compute session.
@@ -265,6 +266,8 @@ class ComputeSession(BaseFunction):
             mounts = []
         if mount_map is None:
             mount_map = {}
+        if mount_options is None:
+            mount_options = {}
         if resources is None:
             resources = {}
         if resource_opts is None:
@@ -304,12 +307,14 @@ class ComputeSession(BaseFunction):
             if assign_agent is not None:
                 params["config"].update({
                     "mount_map": mount_map,
+                    "mount_options": mount_options,
                     "preopen_ports": preopen_ports,
                     "agentList": assign_agent,
                 })
             else:
                 params["config"].update({
                     "mount_map": mount_map,
+                    "mount_options": mount_options,
                     "preopen_ports": preopen_ports,
                 })
         if api_session.get().api_version >= (4, "20190615"):
@@ -348,21 +353,21 @@ class ComputeSession(BaseFunction):
         *,
         name: str | Undefined = undefined,
         type_: str | Undefined = undefined,
-        starts_at: str = None,
+        starts_at: str | None = None,  # not included in templates
         enqueue_only: bool | Undefined = undefined,
         max_wait: int | Undefined = undefined,
-        dependencies: Sequence[str] = None,  # cannot be stored in templates
+        dependencies: Sequence[str] | None = None,  # cannot be stored in templates
         callback_url: str | Undefined = undefined,
         no_reuse: bool | Undefined = undefined,
         image: str | Undefined = undefined,
-        mounts: Union[List[str], Undefined] = undefined,
-        mount_map: Union[Mapping[str, str], Undefined] = undefined,
-        envs: Union[Mapping[str, str], Undefined] = undefined,
+        mounts: List[str] | Undefined = undefined,
+        mount_map: Mapping[str, str] | Undefined = undefined,
+        envs: Mapping[str, str] | Undefined = undefined,
         startup_command: str | Undefined = undefined,
-        resources: Union[Mapping[str, str | int], Undefined] = undefined,
-        resource_opts: Union[Mapping[str, str | int], Undefined] = undefined,
+        resources: Mapping[str, str | int] | Undefined = undefined,
+        resource_opts: Mapping[str, str | int] | Undefined = undefined,
         cluster_size: int | Undefined = undefined,
-        cluster_mode: Union[Literal["single-node", "multi-node"], Undefined] = undefined,
+        cluster_mode: ClusterMode | Undefined = undefined,
         domain_name: str | Undefined = undefined,
         group_name: str | Undefined = undefined,
         bootstrap_script: str | Undefined = undefined,
@@ -602,6 +607,24 @@ class ComputeSession(BaseFunction):
             return await resp.json()
 
     @api_function
+    async def export_to_image(self, new_image_name: str):
+        """
+        Commits running session to new image and then uploads to designated container registry.
+        Requires Backend.AI server set up for per-user image commit feature (24.03).
+        """
+        params = {"image_name": new_image_name}
+        if self.owner_access_key:
+            params["owner_access_key"] = self.owner_access_key
+        prefix = get_naming(api_session.get().api_version, "path")
+        rqst = Request(
+            "POST",
+            f"/{prefix}/{self.name}/imagify",
+            params=params,
+        )
+        async with rqst.fetch() as resp:
+            return await resp.json()
+
+    @api_function
     async def interrupt(self):
         """
         Tries to interrupt the current ongoing code execution.
@@ -676,13 +699,15 @@ class ComputeSession(BaseFunction):
             return await resp.json()
 
     @api_function
-    async def get_logs(self):
+    async def get_logs(self, kernel_id: UUID | None = None):
         """
         Retrieves the console log of the compute session container.
         """
         params = {}
         if self.owner_access_key:
             params["owner_access_key"] = self.owner_access_key
+        if kernel_id is not None:
+            params["kernel_id"] = str(kernel_id)
         prefix = get_naming(api_session.get().api_version, "path")
         rqst = Request(
             "GET",
@@ -899,7 +924,7 @@ class ComputeSession(BaseFunction):
             params["owner_access_key"] = self.owner_access_key
         prefix = get_naming(api_session.get().api_version, "path")
         rqst = Request(
-            "GET",
+            "POST",
             f"/{prefix}/{self.name}/download",
             params=params,
         )
@@ -966,7 +991,7 @@ class ComputeSession(BaseFunction):
             return await resp.json()
 
     @api_function
-    async def stream_app_info(self):
+    async def stream_app_info(self) -> Mapping[str, Any]:
         params = {}
         if self.owner_access_key:
             params["owner_access_key"] = self.owner_access_key
@@ -981,7 +1006,7 @@ class ComputeSession(BaseFunction):
             return await resp.json()
 
     @api_function
-    async def get_abusing_report(self):
+    async def get_abusing_report(self) -> Mapping[str, Any]:
         """
         Retrieves abusing reports of session's sibling kernels.
         """
@@ -1202,12 +1227,13 @@ class InferenceSession(BaseFunction):
         callback_url: Optional[str] = None,
         mounts: Optional[List[str]] = None,
         mount_map: Optional[Mapping[str, str]] = None,
+        mount_options: Optional[Mapping[str, Mapping[str, str]]] = None,
         envs: Optional[Mapping[str, str]] = None,
         startup_command: Optional[str] = None,
         resources: Optional[Mapping[str, str]] = None,
         resource_opts: Optional[Mapping[str, str]] = None,
         cluster_size: int = 1,
-        cluster_mode: Literal["single-node", "multi-node"] = "single-node",
+        cluster_mode: ClusterMode = ClusterMode.SINGLE_NODE,
         domain_name: Optional[str] = None,
         group_name: Optional[str] = None,
         bootstrap_script: Optional[str] = None,
@@ -1244,7 +1270,7 @@ class InferenceSession(BaseFunction):
         resources: Mapping[str, int] | Undefined = undefined,
         resource_opts: Mapping[str, int] | Undefined = undefined,
         cluster_size: int | Undefined = undefined,
-        cluster_mode: Literal["single-node", "multi-node"] | Undefined = undefined,
+        cluster_mode: ClusterMode | Undefined = undefined,
         domain_name: str | Undefined = undefined,
         group_name: str | Undefined = undefined,
         bootstrap_script: str | Undefined = undefined,

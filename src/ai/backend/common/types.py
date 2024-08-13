@@ -14,7 +14,7 @@ from contextvars import ContextVar
 from dataclasses import dataclass
 from decimal import Decimal
 from ipaddress import ip_address, ip_network
-from pathlib import PurePosixPath
+from pathlib import Path, PurePosixPath
 from ssl import SSLContext
 from typing import (
     TYPE_CHECKING,
@@ -43,9 +43,11 @@ import redis.asyncio.sentinel
 import trafaret as t
 import typeguard
 from aiohttp import Fingerprint
+from pydantic import BaseModel, ConfigDict, Field
 from redis.asyncio import Redis
 
 from .exception import InvalidIpAddressValue
+from .models.minilang.mount import MountPointParser
 
 __all__ = (
     "aobject",
@@ -73,6 +75,7 @@ __all__ = (
     "MountPermission",
     "MountPermissionLiteral",
     "MountTypes",
+    "MountPoint",
     "VFolderID",
     "QuotaScopeID",
     "VFolderUsageMode",
@@ -87,6 +90,8 @@ __all__ = (
     "check_typed_dict",
     "EtcdRedisConfig",
     "RedisConnectionInfo",
+    "RuntimeVariant",
+    "MODEL_SERVICE_RUNTIME_PROFILES",
 )
 
 if TYPE_CHECKING:
@@ -223,7 +228,7 @@ AccessKey = NewType("AccessKey", str)
 SecretKey = NewType("SecretKey", str)
 
 
-class AbstractPermission(str, enum.Enum):
+class AbstractPermission(enum.StrEnum):
     """
     Abstract enum type for permissions
     """
@@ -244,15 +249,15 @@ class VFolderHostPermission(AbstractPermission):
     SET_USER_PERM = "set-user-specific-permission"  # override permission of group-type vfolder
 
 
-class LogSeverity(str, enum.Enum):
-    CRITICAL = "critical"
-    ERROR = "error"
-    WARNING = "warning"
-    INFO = "info"
-    DEBUG = "debug"
+class LogSeverity(enum.StrEnum):
+    CRITICAL = "CRITICAL"
+    ERROR = "ERROR"
+    WARNING = "WARNING"
+    INFO = "INFO"
+    DEBUG = "DEBUG"
 
 
-class SlotTypes(str, enum.Enum):
+class SlotTypes(enum.StrEnum):
     COUNT = "count"
     BYTES = "bytes"
     UNIQUE = "unique"
@@ -264,42 +269,52 @@ class HardwareMetadata(TypedDict):
     metadata: Dict[str, str]
 
 
-class AutoPullBehavior(str, enum.Enum):
+class AutoPullBehavior(enum.StrEnum):
     DIGEST = "digest"
     TAG = "tag"
     NONE = "none"
 
 
-class ServicePortProtocols(str, enum.Enum):
+class ServicePortProtocols(enum.StrEnum):
     HTTP = "http"
     TCP = "tcp"
     PREOPEN = "preopen"
     INTERNAL = "internal"
 
 
-class SessionTypes(str, enum.Enum):
+class SessionTypes(enum.StrEnum):
     INTERACTIVE = "interactive"
     BATCH = "batch"
     INFERENCE = "inference"
 
 
-class SessionResult(str, enum.Enum):
+class SessionResult(enum.StrEnum):
     UNDEFINED = "undefined"
     SUCCESS = "success"
     FAILURE = "failure"
 
 
-class ClusterMode(str, enum.Enum):
+class ClusterMode(enum.StrEnum):
     SINGLE_NODE = "single-node"
     MULTI_NODE = "multi-node"
 
 
-class CommitStatus(str, enum.Enum):
+class CommitStatus(enum.StrEnum):
     READY = "ready"
     ONGOING = "ongoing"
 
 
-class AbuseReportValue(str, enum.Enum):
+class ItemResult(TypedDict):
+    msg: Optional[str]
+    item: Optional[str]
+
+
+class ResultSet(TypedDict):
+    success: list[ItemResult]
+    failed: list[ItemResult]
+
+
+class AbuseReportValue(enum.StrEnum):
     DETECTED = "detected"
     CLEANING = "cleaning"
 
@@ -324,7 +339,7 @@ MetricValue = TypedDict(
     {
         "current": str,
         "capacity": Optional[str],
-        "pct": Optional[str],
+        "pct": str,
         "unit_hint": str,
         "stats.min": str,
         "stats.max": str,
@@ -332,8 +347,8 @@ MetricValue = TypedDict(
         "stats.avg": str,
         "stats.diff": str,
         "stats.rate": str,
+        "stats.version": Optional[int],
     },
-    total=False,
 )
 
 
@@ -342,12 +357,12 @@ class IntrinsicSlotNames(enum.Enum):
     MEMORY = SlotName("mem")
 
 
-class DefaultForUnspecified(str, enum.Enum):
+class DefaultForUnspecified(enum.StrEnum):
     LIMITED = "LIMITED"
     UNLIMITED = "UNLIMITED"
 
 
-class HandlerForUnknownSlotName(str, enum.Enum):
+class HandlerForUnknownSlotName(enum.StrEnum):
     DROP = "drop"
     ERROR = "error"
 
@@ -355,7 +370,7 @@ class HandlerForUnknownSlotName(str, enum.Enum):
 Quantum = Decimal("0.000")
 
 
-class MountPermission(str, enum.Enum):
+class MountPermission(enum.StrEnum):
     READ_ONLY = "ro"
     READ_WRITE = "rw"
     RW_DELETE = "wd"
@@ -364,12 +379,50 @@ class MountPermission(str, enum.Enum):
 MountPermissionLiteral = Literal["ro", "rw", "wd"]
 
 
-class MountTypes(str, enum.Enum):
+class MountTypes(enum.StrEnum):
     VOLUME = "volume"
     BIND = "bind"
     TMPFS = "tmpfs"
     K8S_GENERIC = "k8s-generic"
     K8S_HOSTPATH = "k8s-hostpath"
+
+
+class MountPoint(BaseModel):
+    type: MountTypes = Field(default=MountTypes.BIND)
+    source: Path
+    target: Path | None = Field(default=None)
+    permission: MountPermission | None = Field(alias="perm", default=None)
+
+    model_config = ConfigDict(populate_by_name=True)
+
+
+class MountExpression:
+    def __init__(self, expression: str, *, escape_map: Optional[Mapping[str, str]] = None) -> None:
+        self.expression = expression
+        self.escape_map = {
+            "\\,": ",",
+            "\\:": ":",
+            "\\=": "=",
+        }
+        if escape_map is not None:
+            self.escape_map.update(escape_map)
+        # self.unescape_map = {v: k for k, v in self.escape_map.items()}
+
+    def __str__(self) -> str:
+        return self.expression
+
+    def __repr__(self) -> str:
+        return self.__str__()
+
+    def parse(self, *, escape: bool = True) -> Mapping[str, str]:
+        parser = MountPointParser()
+        result = {**parser.parse_mount(self.expression)}
+        if escape:
+            for key, value in result.items():
+                for raw, alternative in self.escape_map.items():
+                    if raw in value:
+                        result[key] = value.replace(raw, alternative)
+        return MountPoint(**result).model_dump()  # type: ignore[arg-type]
 
 
 class HostPortPair(namedtuple("HostPortPair", "host port")):
@@ -581,6 +634,11 @@ class BinarySize(int):
 
 
 class ResourceSlot(UserDict):
+    """
+    key: `str` type slot name.
+    value: `str` or `Decimal` type value. Do not convert this to `float` or `int`.
+    """
+
     __slots__ = ("data",)
 
     def __init__(self, *args, **kwargs) -> None:
@@ -804,25 +862,23 @@ class JSONSerializableMixin(metaclass=ABCMeta):
 @attrs.define(slots=True, frozen=True)
 class QuotaScopeID:
     scope_type: QuotaScopeType
-    scope_id: Any
+    scope_id: uuid.UUID
 
     @classmethod
     def parse(cls, raw: str) -> QuotaScopeID:
         scope_type, _, rest = raw.partition(":")
-        match scope_type:
-            case "project":
-                return cls(QuotaScopeType.PROJECT, uuid.UUID(rest))
-            case "user":
-                return cls(QuotaScopeType.USER, uuid.UUID(rest))
+        match scope_type.lower():
+            case QuotaScopeType.PROJECT | QuotaScopeType.USER as t:
+                return cls(t, uuid.UUID(rest))
             case _:
-                raise ValueError(f"Unsupported vFolder quota scope type {scope_type}")
+                raise ValueError(f"Invalid quota scope type: {scope_type!r}")
 
     def __str__(self) -> str:
         match self.scope_id:
             case uuid.UUID():
-                return f"{self.scope_type.value}:{str(self.scope_id)}"
+                return f"{self.scope_type}:{str(self.scope_id)}"
             case _:
-                raise ValueError(f"Unsupported vFolder quota scope type {self.scope_type}")
+                raise ValueError(f"Invalid quota scope ID: {self.scope_id!r}")
 
     def __repr__(self) -> str:
         return self.__str__()
@@ -833,7 +889,7 @@ class QuotaScopeID:
             case uuid.UUID():
                 return self.scope_id.hex
             case _:
-                raise ValueError(f"Unsupported vFolder quota scope type {self.scope_type}")
+                raise ValueError(f"Invalid quota scope ID: {self.scope_id!r}")
 
 
 class VFolderID:
@@ -865,7 +921,7 @@ class VFolderID:
         return self.quota_scope_id == other.quota_scope_id and self.folder_id == other.folder_id
 
 
-class VFolderUsageMode(str, enum.Enum):
+class VFolderUsageMode(enum.StrEnum):
     """
     Usage mode of virtual folder.
 
@@ -968,7 +1024,7 @@ class QuotaConfig:
         return cls.Validator()
 
 
-class QuotaScopeType(str, enum.Enum):
+class QuotaScopeType(enum.StrEnum):
     USER = "user"
     PROJECT = "project"
 
@@ -1006,7 +1062,7 @@ class ClusterInfo(TypedDict):
     size: int
     replicas: Mapping[str, int]  # per-role kernel counts
     network_name: Optional[str]
-    ssh_keypair: Optional[ClusterSSHKeyPair]
+    ssh_keypair: ClusterSSHKeyPair
     cluster_ssh_port_mapping: Optional[ClusterSSHPortMapping]
 
 
@@ -1197,3 +1253,29 @@ SSLContextType: TypeAlias = bool | Fingerprint | SSLContext
 class ModelServiceStatus(enum.Enum):
     HEALTHY = "healthy"
     UNHEALTHY = "unhealthy"
+
+
+class RuntimeVariant(enum.StrEnum):
+    VLLM = "vllm"
+    NIM = "nim"
+    CMD = "cmd"
+    CUSTOM = "custom"
+
+
+@dataclass
+class ModelServiceProfile:
+    name: str
+    health_check_endpoint: str | None = dataclasses.field(default=None)
+    port: int | None = dataclasses.field(default=None)
+
+
+MODEL_SERVICE_RUNTIME_PROFILES: Mapping[RuntimeVariant, ModelServiceProfile] = {
+    RuntimeVariant.CUSTOM: ModelServiceProfile(name="Custom (Default)"),
+    RuntimeVariant.VLLM: ModelServiceProfile(
+        name="vLLM", health_check_endpoint="/health", port=8000
+    ),
+    RuntimeVariant.NIM: ModelServiceProfile(
+        name="NVIDIA NIM", health_check_endpoint="/v1/health/ready", port=8000
+    ),
+    RuntimeVariant.CMD: ModelServiceProfile(name="Predefined Image Command"),
+}

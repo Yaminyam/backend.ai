@@ -100,14 +100,14 @@ is that how you launch the Web UI from the mono-repo.
 Installation from Source
 ------------------------
 
-For the ease of on-boarding developer experience, we provide an automated
+For the ease of onboarding developer experience, we provide an automated
 script that installs all server-side components in editable states with just
 one command.
 
 Prerequisites
 ~~~~~~~~~~~~~
 
-Install the followings accordingly to your host operating system.
+Install the following according to your host operating system.
 
 * `Git LFS <https://git-lfs.github.com/>`_
 
@@ -123,6 +123,10 @@ Install the followings accordingly to your host operating system.
 * `Docker Compose <https://docs.docker.com/compose/install/>`_ (v2 required)
 
 * (For Linux aarch64/arm64 setups only) `Rust <https://rustup.rs/>`_ to build Pants from its source
+
+* `Pants <https://www.pantsbuild.org/2.18/docs/getting-started/installing-pants>`_
+
+  - For pants version 2.18 and later. The following versions are released from Github Releases instead of PyPI.
 
 .. warning::
 

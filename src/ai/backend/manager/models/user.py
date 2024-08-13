@@ -2,16 +2,16 @@ from __future__ import annotations
 
 import enum
 import logging
-from typing import TYPE_CHECKING, Any, Dict, Iterable, Mapping, Optional, Sequence
+from typing import TYPE_CHECKING, Any, Dict, Iterable, Mapping, Optional, Sequence, cast
 from uuid import UUID, uuid4
 
 import aiotools
+import bcrypt
 import graphene
 import sqlalchemy as sa
 from dateutil.parser import parse as dtparse
 from graphene.types.datetime import DateTime as GQLDateTime
 from graphql import Undefined
-from passlib.hash import bcrypt
 from sqlalchemy.dialects import postgresql as pgsql
 from sqlalchemy.engine.result import Result
 from sqlalchemy.engine.row import Row
@@ -31,9 +31,11 @@ from ..defs import DEFAULT_KEYPAIR_RATE_LIMIT, DEFAULT_KEYPAIR_RESOURCE_POLICY_N
 from .base import (
     Base,
     EnumValueType,
+    FilterExprArg,
     IDColumn,
     IPColumn,
     Item,
+    OrderExprArg,
     PaginatedList,
     batch_multiresult,
     batch_result,
@@ -46,13 +48,13 @@ from .base import (
 from .gql_relay import AsyncNode, Connection, ConnectionResolverResult
 from .minilang.ordering import OrderSpecItem, QueryOrderParser
 from .minilang.queryfilter import FieldSpecItem, QueryFilterParser, enum_field_getter
-from .storage import StorageSessionManager
 from .utils import ExtendedAsyncSAEngine
 
 if TYPE_CHECKING:
     from .gql import GraphQueryContext
+    from .storage import StorageSessionManager
 
-log = BraceStyleAdapter(logging.getLogger(__spec__.name))  # type: ignore[name-defined]
+log = BraceStyleAdapter(logging.getLogger(__spec__.name))
 
 
 __all__: Sequence[str] = (
@@ -80,7 +82,7 @@ class PasswordColumn(TypeDecorator):
         return _hash_password(value)
 
 
-class UserRole(str, enum.Enum):
+class UserRole(enum.StrEnum):
     """
     User's role.
     """
@@ -91,7 +93,7 @@ class UserRole(str, enum.Enum):
     MONITOR = "monitor"
 
 
-class UserStatus(str, enum.Enum):
+class UserStatus(enum.StrEnum):
     """
     User account status.
     """
@@ -173,6 +175,7 @@ class UserRow(Base):
     groups = relationship("AssocGroupUserRow", back_populates="user")
     resource_policy_row = relationship("UserResourcePolicyRow", back_populates="users")
     keypairs = relationship("KeyPairRow", back_populates="user_row", foreign_keys="KeyPairRow.user")
+    kernels = relationship("KernelRow", back_populates="user_row")
 
     created_endpoints = relationship(
         "EndpointRow", back_populates="created_user_row", foreign_keys="EndpointRow.created_user"
@@ -182,6 +185,12 @@ class UserRow(Base):
     )
 
     main_keypair = relationship("KeyPairRow", foreign_keys=users.c.main_access_key)
+
+    vfolder_rows = relationship(
+        "VFolderRow",
+        back_populates="user_row",
+        primaryjoin="UserRow.uuid == foreign(VFolderRow.user)",
+    )
 
 
 class UserGroup(graphene.ObjectType):
@@ -657,8 +666,13 @@ class CreateUser(graphene.Mutation):
             model_store_query = sa.select([groups.c.id]).where(
                 groups.c.type == ProjectType.MODEL_STORE
             )
-            model_store_gid = (await conn.execute(model_store_query)).first()["id"]
-            gids_to_join = [*group_ids, model_store_gid]
+            model_store_project = cast(
+                dict[str, Any] | None, (await conn.execute(model_store_query)).first()
+            )
+            if model_store_project is not None:
+                gids_to_join = [*group_ids, model_store_project["id"]]
+            else:
+                gids_to_join = group_ids
 
             # Add user to groups if group_ids parameter is provided.
             if gids_to_join:
@@ -723,12 +737,13 @@ class ModifyUser(graphene.Mutation):
         set_if_set(props, data, "resource_policy")
         set_if_set(props, data, "sudo_session_enabled")
         set_if_set(props, data, "main_access_key")
+        set_if_set(props, data, "is_active")
         if data.get("password") is None:
             data.pop("password", None)
         if not data and not props.group_ids:
             return cls(ok=False, msg="nothing to update", user=None)
-        if data.get("status") is None and props.is_active is not None:
-            data["status"] = UserStatus.ACTIVE if props.is_active else UserStatus.INACTIVE
+        if data.get("status") is None and data.get("is_active") is not None:
+            data["status"] = UserStatus.ACTIVE if data["is_active"] else UserStatus.INACTIVE
 
         if data.get("password") is not None:
             data["password_changed_at"] = sa.func.now()
@@ -1096,7 +1111,7 @@ class PurgeUser(graphene.Mutation):
 
         :return: number of deleted rows
         """
-        from . import VFolderDeletionInfo, initiate_vfolder_purge, vfolder_permissions, vfolders
+        from . import VFolderDeletionInfo, initiate_vfolder_deletion, vfolder_permissions, vfolders
 
         async with engine.begin_session() as conn:
             await conn.execute(
@@ -1111,7 +1126,7 @@ class PurgeUser(graphene.Mutation):
 
         storage_ptask_group = aiotools.PersistentTaskGroup()
         try:
-            await initiate_vfolder_purge(
+            await initiate_vfolder_deletion(
                 engine,
                 [VFolderDeletionInfo(VFolderID.from_row(vf), vf["host"]) for vf in target_vfs],
                 storage_manager,
@@ -1376,6 +1391,48 @@ class UserNode(graphene.ObjectType):
             user_row = (await db_session.scalars(query)).first()
             return cls.from_row(user_row)
 
+    _queryfilter_fieldspec: Mapping[str, FieldSpecItem] = {
+        "uuid": ("uuid", None),
+        "username": ("username", None),
+        "email": ("email", None),
+        "need_password_change": ("need_password_change", None),
+        "full_name": ("full_name", None),
+        "description": ("description", None),
+        "is_active": ("is_active", None),
+        "status": ("status", enum_field_getter(UserStatus)),
+        "status_info": ("status_info", None),
+        "created_at": ("created_at", dtparse),
+        "modified_at": ("modified_at", dtparse),
+        "domain_name": ("domain_name", None),
+        "role": ("role", enum_field_getter(UserRole)),
+        "resource_policy": ("resource_policy", None),
+        "allowed_client_ip": ("allowed_client_ip", None),
+        "totp_activated": ("totp_activated", None),
+        "totp_activated_at": ("totp_activated_at", dtparse),
+        "sudo_session_enabled": ("sudo_session_enabled", None),
+        "main_access_key": ("main_access_key", None),
+    }
+
+    _queryorder_colmap: Mapping[str, OrderSpecItem] = {
+        "uuid": ("uuid", None),
+        "username": ("username", None),
+        "email": ("email", None),
+        "need_password_change": ("need_password_change", None),
+        "full_name": ("full_name", None),
+        "is_active": ("is_active", None),
+        "status": ("status", None),
+        "status_info": ("status_info", None),
+        "created_at": ("created_at", None),
+        "modified_at": ("modified_at", None),
+        "domain_name": ("domain_name", None),
+        "role": ("role", None),
+        "resource_policy": ("resource_policy", None),
+        "totp_activated": ("totp_activated", None),
+        "totp_activated_at": ("totp_activated_at", None),
+        "sudo_session_enabled": ("sudo_session_enabled", None),
+        "main_access_key": ("main_access_key", None),
+    }
+
     @classmethod
     async def get_connection(
         cls,
@@ -1389,9 +1446,20 @@ class UserNode(graphene.ObjectType):
         last: int | None = None,
     ) -> ConnectionResolverResult:
         graph_ctx: GraphQueryContext = info.context
+        _filter_arg = (
+            FilterExprArg(filter_expr, QueryFilterParser(cls._queryfilter_fieldspec))
+            if filter_expr is not None
+            else None
+        )
+        _order_expr = (
+            OrderExprArg(order_expr, QueryOrderParser(cls._queryorder_colmap))
+            if order_expr is not None
+            else None
+        )
         (
             query,
-            conditions,
+            cnt_query,
+            _,
             cursor,
             pagination_order,
             page_size,
@@ -1399,17 +1467,14 @@ class UserNode(graphene.ObjectType):
             info,
             UserRow,
             UserRow.uuid,
-            filter_expr,
-            order_expr,
+            _filter_arg,
+            _order_expr,
             offset,
             after=after,
             first=first,
             before=before,
             last=last,
         )
-        cnt_query = sa.select(sa.func.count()).select_from(UserRow)
-        for cond in conditions:
-            cnt_query = cnt_query.where(cond)
         async with graph_ctx.db.begin_readonly_session() as db_session:
             user_rows = (await db_session.scalars(query)).all()
             result = [cls.from_row(row) for row in user_rows]
@@ -1423,12 +1488,12 @@ class UserConnection(Connection):
         node = UserNode
 
 
-def _hash_password(password):
-    return bcrypt.using(rounds=12).hash(password)
+def _hash_password(password: str) -> str:
+    return bcrypt.hashpw(password.encode("utf8"), bcrypt.gensalt(rounds=12)).decode("utf8")
 
 
-def _verify_password(guess, hashed):
-    return bcrypt.verify(guess, hashed)
+def _verify_password(guess: str, hashed: str) -> bool:
+    return bcrypt.checkpw(guess.encode("utf8"), hashed.encode("utf8"))
 
 
 def compare_to_hashed_password(raw_password: str, hashed_password: str) -> bool:

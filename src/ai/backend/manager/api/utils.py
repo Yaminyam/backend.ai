@@ -13,6 +13,7 @@ import uuid
 from collections import defaultdict
 from typing import (
     TYPE_CHECKING,
+    Annotated,
     Any,
     Awaitable,
     Callable,
@@ -31,9 +32,9 @@ from typing import (
 import sqlalchemy as sa
 import trafaret as t
 import yaml
-from aiohttp import web, web_response
+from aiohttp import web
 from aiohttp.typedefs import Handler
-from pydantic import BaseModel, TypeAdapter, ValidationError
+from pydantic import BaseModel, Field, TypeAdapter, ValidationError
 
 from ai.backend.common.logging import BraceStyleAdapter
 from ai.backend.common.types import AccessKey
@@ -44,15 +45,16 @@ from ..utils import (
     check_if_requester_is_eligible_to_act_as_target_user_uuid,
 )
 from .exceptions import (
+    DeprecatedAPI,
     GenericForbidden,
     InvalidAPIParameters,
-    QueryNotImplemented,
+    NotImplementedAPI,
 )
 
 if TYPE_CHECKING:
     from .context import RootContext
 
-log = BraceStyleAdapter(logging.getLogger(__spec__.name))  # type: ignore[name-defined]
+log = BraceStyleAdapter(logging.getLogger(__spec__.name))
 
 _rx_sitepkg_path = re.compile(r"^.+/site-packages/")
 
@@ -184,7 +186,7 @@ def check_api_params(
             body: str = ""
             try:
                 body_exists = request.can_read_body
-                if body_exists:
+                if body_exists and request.method not in ("GET", "HEAD"):
                     body = await request.text()
                     if request.content_type == "text/yaml":
                         orig_params = yaml.load(body, Loader=yaml.BaseLoader)
@@ -212,6 +214,10 @@ def check_api_params(
     return wrap
 
 
+class BaseResponseModel(BaseModel):
+    status: Annotated[int, Field(strict=True, exclude=True, ge=100, lt=600)] = 200
+
+
 TParamModel = TypeVar("TParamModel", bound=BaseModel)
 TQueryModel = TypeVar("TQueryModel", bound=BaseModel)
 TResponseModel = TypeVar("TResponseModel", bound=BaseModel)
@@ -226,16 +232,16 @@ THandlerFuncWithParam: TypeAlias = Callable[
 
 
 def ensure_stream_response_type(
-    response: TResponseModel | list | TAnyResponse,
+    response: BaseResponseModel | BaseModel | list[TResponseModel] | web.StreamResponse,
 ) -> web.StreamResponse:
     match response:
+        case BaseResponseModel(status=status):
+            return web.json_response(response.model_dump(mode="json"), status=status)
         case BaseModel():
             return web.json_response(response.model_dump(mode="json"))
         case list():
-            return web.json_response(
-                TypeAdapter(list[TResponseModel]).dump_python(response, mode="json")
-            )
-        case web_response.StreamResponse():
+            return web.json_response(TypeAdapter(type(response)).dump_python(response, mode="json"))
+        case web.StreamResponse():
             return response
         case _:
             raise RuntimeError(f"Unsupported response type ({type(response)})")
@@ -409,8 +415,15 @@ def get_handler_attr(request, key, default=None):
     return default
 
 
-async def not_impl_stub(request) -> web.Response:
-    raise QueryNotImplemented
+async def not_impl_stub(request: web.Request) -> web.Response:
+    raise NotImplementedAPI
+
+
+def deprecated_stub(msg: str) -> Callable[[web.Request], Awaitable[web.StreamResponse]]:
+    async def deprecated_stub_impl(request: web.Request) -> web.Response:
+        raise DeprecatedAPI(extra_msg=msg)
+
+    return deprecated_stub_impl
 
 
 def chunked(iterable, n):

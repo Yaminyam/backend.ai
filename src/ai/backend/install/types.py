@@ -19,6 +19,7 @@ class InstallModes(enum.StrEnum):
     DEVELOP = "DEVELOP"
     PACKAGE = "PACKAGE"
     MAINTAIN = "MAINTAIN"
+    CONFIGURE = "CONFIGURE"
 
 
 class PackageSource(enum.StrEnum):
@@ -50,6 +51,8 @@ class CliArgs:
     mode: InstallModes | None
     target_path: str
     show_guide: bool
+    non_interactive: bool
+    public_facing_address: str
 
 
 class PrerequisiteError(RichCast, Exception):
@@ -158,3 +161,11 @@ class ServiceConfig:
     storage_agent_var_base_path: str
     storage_watcher_addr: ServerAddr
     vfolder_relpath: str
+    wsproxy_hash_key: str
+    wsproxy_jwt_key: str
+    wsproxy_api_token: str
+
+
+@dataclasses.dataclass
+class InstallVariable:
+    public_facing_address: str = "127.0.0.1"

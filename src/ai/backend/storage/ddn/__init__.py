@@ -102,12 +102,15 @@ class EXAScalerQuotaModel(BaseQuotaModel):
                     break
                 words = line.split()
                 if next_line_is_quota:
-                    used_bytes, hard_limit = int(words[0]), int(words[2])
+                    raw_used_bytes, hard_limit = words[0], int(words[2])
                     # words[1] is soft_limit
                     if hard_limit == 0:
                         return None
+                    if raw_used_bytes.endswith("*"):
+                        raw_used_bytes = raw_used_bytes[:-1]
+                    used_bytes = _kilobyte_to_byte(int(raw_used_bytes))
                     return QuotaUsage(
-                        used_bytes=_kilobyte_to_byte(used_bytes), limit_bytes=hard_limit
+                        used_bytes=used_bytes, limit_bytes=_kilobyte_to_byte(hard_limit)
                     )
                 if Path(words[0]) == qspath:
                     next_line_is_quota = True
@@ -138,9 +141,6 @@ class EXAScalerQuotaModel(BaseQuotaModel):
             if quota_usage is not None:
                 raise QuotaScopeAlreadyExists
 
-        if options is None:
-            return
-
         # Set projectID to the directory
         try:
             await run([
@@ -156,7 +156,8 @@ class EXAScalerQuotaModel(BaseQuotaModel):
         except CalledProcessError as e:
             raise RuntimeError(f"'lfs project -p {project_id}' command failed: {e.stderr}")
 
-        await self._set_quota_by_project(project_id, qspath, options)
+        if options is not None:
+            await self._set_quota_by_project(project_id, qspath, options)
 
     async def describe_quota_scope(self, quota_scope_id: QuotaScopeID) -> QuotaUsage | None:
         """

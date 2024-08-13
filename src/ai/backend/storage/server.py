@@ -25,6 +25,7 @@ from ai.backend.common.config import (
 )
 from ai.backend.common.defs import REDIS_STREAM_DB
 from ai.backend.common.events import EventDispatcher, EventProducer
+from ai.backend.common.events_experimental import EventDispatcher as ExperimentalEventDispatcher
 from ai.backend.common.logging import BraceStyleAdapter, Logger
 from ai.backend.common.types import LogSeverity
 from ai.backend.common.utils import env_info
@@ -34,7 +35,7 @@ from .config import load_local_config, load_shared_config
 from .context import EVENT_DISPATCHER_CONSUMER_GROUP, RootContext
 from .watcher import WatcherClient, main_job
 
-log = BraceStyleAdapter(logging.getLogger(__spec__.name))  # type: ignore[name-defined]
+log = BraceStyleAdapter(logging.getLogger(__spec__.name))
 
 
 def _is_root() -> bool:
@@ -100,13 +101,19 @@ async def server_main(
             log.exception("Unable to read config from etcd")
             raise e
 
+        event_dispatcher_cls: type[EventDispatcher] | type[ExperimentalEventDispatcher]
+        if local_config["storage-proxy"].get("use-experimental-redis-event-dispatcher"):
+            event_dispatcher_cls = ExperimentalEventDispatcher
+        else:
+            event_dispatcher_cls = EventDispatcher
+
         event_producer = await EventProducer.new(
             redis_config,
             db=REDIS_STREAM_DB,
             log_events=local_config["debug"]["log-events"],
         )
         log.info("PID: {0} - Event producer created. (redis_config: {1})", pidx, redis_config)
-        event_dispatcher = await EventDispatcher.new(
+        event_dispatcher = await event_dispatcher_cls.new(
             redis_config,
             db=REDIS_STREAM_DB,
             log_events=local_config["debug"]["log-events"],
@@ -232,15 +239,15 @@ async def server_main(
 )
 @click.option(
     "--log-level",
-    type=click.Choice([*LogSeverity.__members__.keys()], case_sensitive=False),
-    default="INFO",
+    type=click.Choice([*LogSeverity], case_sensitive=False),
+    default=LogSeverity.INFO,
     help="Set the logging verbosity level",
 )
 @click.pass_context
 def main(
     cli_ctx: click.Context,
     config_path: Path,
-    log_level: str,
+    log_level: LogSeverity,
     debug: bool = False,
 ) -> int:
     """Start the storage-proxy service as a foreground process."""
@@ -254,10 +261,10 @@ def main(
         print(pformat(e.invalid_data), file=sys.stderr)
         raise click.Abort()
     if debug:
-        log_level = "DEBUG"
-    override_key(local_config, ("debug", "enabled"), log_level == "DEBUG")
-    override_key(local_config, ("logging", "level"), log_level.upper())
-    override_key(local_config, ("logging", "pkg-ns", "ai.backend"), log_level.upper())
+        log_level = LogSeverity.DEBUG
+    override_key(local_config, ("debug", "enabled"), log_level == LogSeverity.DEBUG)
+    override_key(local_config, ("logging", "level"), log_level)
+    override_key(local_config, ("logging", "pkg-ns", "ai.backend"), log_level)
 
     multiprocessing.set_start_method("spawn")
 

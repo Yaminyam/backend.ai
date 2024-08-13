@@ -30,7 +30,7 @@ from .utils import check_api_params, get_access_key_scopes
 if TYPE_CHECKING:
     from .context import RootContext
 
-log = BraceStyleAdapter(logging.getLogger(__spec__.name))  # type: ignore[name-defined]
+log = BraceStyleAdapter(logging.getLogger(__spec__.name))
 
 
 class DoLogCleanupEvent(EmptyEventArgs, AbstractEvent):
@@ -69,7 +69,7 @@ async def append(request: web.Request, params: Any) -> web.Response:
             "success": True,
         }
         query = error_logs.insert().values({
-            "severity": params["severity"],
+            "severity": params["severity"].lower(),
             "source": params["source"],
             "user": requester_uuid,
             "message": params["message"],

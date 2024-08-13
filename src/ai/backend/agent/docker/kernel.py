@@ -1,6 +1,9 @@
+from __future__ import annotations
+
 import asyncio
 import functools
 import gzip
+import io
 import logging
 import lzma
 import os
@@ -9,7 +12,7 @@ import shutil
 import subprocess
 import textwrap
 from pathlib import Path, PurePosixPath
-from typing import Any, Dict, Final, FrozenSet, Mapping, Optional, Sequence, Tuple
+from typing import Any, Dict, Final, FrozenSet, Mapping, Optional, Sequence, Tuple, cast, override
 
 import janus
 import pkg_resources
@@ -31,7 +34,7 @@ from ..resources import KernelResourceSpec
 from ..types import AgentEventData
 from ..utils import closing_async, get_arch_name
 
-log = BraceStyleAdapter(logging.getLogger(__spec__.name))  # type: ignore[name-defined]
+log = BraceStyleAdapter(logging.getLogger(__spec__.name))
 
 DEFAULT_CHUNK_SIZE: Final = 256 * 1024  # 256 KiB
 DEFAULT_INFLIGHT_CHUNKS: Final = 8
@@ -103,7 +106,7 @@ class DockerKernel(AbstractKernel):
         container_id = self.data["container_id"]
         async with closing_async(Docker()) as docker:
             container = await docker.containers.get(container_id)
-            logs = await container.log(stdout=True, stderr=True)
+            logs = await container.log(stdout=True, stderr=True, follow=False)
         return {"logs": "".join(logs)}
 
     async def interrupt_kernel(self):
@@ -158,13 +161,20 @@ class DockerKernel(AbstractKernel):
             return CommitStatus.ONGOING
         return CommitStatus.READY
 
-    async def commit(self, kernel_id: KernelId, subdir: str, filename: str):
+    async def commit(
+        self,
+        kernel_id,
+        subdir,
+        *,
+        canonical: str | None = None,
+        filename: str | None = None,
+        extra_labels: dict[str, str] = {},
+    ) -> None:
         assert self.runner is not None
 
         loop = asyncio.get_running_loop()
         path, lock_path = self._get_commit_path(kernel_id, subdir)
         container_id: str = str(self.data["container_id"])
-        filepath = path / filename
         try:
             Path(path).mkdir(exist_ok=True, parents=True)
             Path(lock_path).parent.mkdir(exist_ok=True, parents=True)
@@ -184,121 +194,177 @@ class DockerKernel(AbstractKernel):
 
         try:
             async with FileLock(path=lock_path, timeout=0.1, remove_when_unlock=True):
-                log.info("Container is being committed to {}", filepath)
+                log.info("Container (k: {}) is being committed", kernel_id)
                 docker = Docker()
-                container = docker.containers.container(container_id)
                 try:
-                    response: Mapping[str, Any] = await container.commit()
+                    # There is a known issue at certain versions of Docker Engine
+                    # which prevents container from being committed when request config body is empty
+                    # https://github.com/moby/moby/issues/45543
+                    docker_info = await docker.system.info()
+                    docker_version = docker_info["ServerVersion"]
+                    major, _, patch = docker_version.split(".", maxsplit=2)
+                    config = None
+                    if (int(major) == 23 and int(patch) < 8) or (
+                        int(major) == 24 and int(patch) < 1
+                    ):
+                        config = {"ContainerSpec": {}}
+
+                    container = docker.containers.container(container_id)
+                    changes: list[str] = []
+
+                    for label_name, label_value in extra_labels.items():
+                        changes.append(f"LABEL {label_name}={label_value}")
+                    if canonical:
+                        if ":" in canonical:
+                            repo, tag = canonical.rsplit(":", maxsplit=1)
+                        else:
+                            repo, tag = canonical, "latest"
+                        log.debug("tagging image as {}:{}", repo, tag)
+                    else:
+                        repo, tag = None, None
+                    response: Mapping[str, Any] = await container.commit(
+                        changes=changes or None,
+                        repository=repo,
+                        tag=tag,
+                        config=config,
+                    )
                     image_id = response["Id"]
-                    try:
-                        q: janus.Queue[bytes | Sentinel] = janus.Queue(
-                            maxsize=DEFAULT_INFLIGHT_CHUNKS
-                        )
-                        async with docker._query(f"images/{image_id}/get") as tb_resp:
-                            with gzip.open(filepath, "wb") as fileobj:
-                                write_task = loop.run_in_executor(
-                                    None,
-                                    functools.partial(
-                                        _write_chunks,
-                                        fileobj,
-                                        q.sync_q,
-                                    ),
-                                )
-                                try:
-                                    await asyncio.sleep(0)  # let write_task get started
-                                    async for chunk in tb_resp.content.iter_chunked(
-                                        DEFAULT_CHUNK_SIZE
-                                    ):
-                                        await q.async_q.put(chunk)
-                                finally:
-                                    await q.async_q.put(Sentinel.TOKEN)
-                                    await write_task
-                    finally:
-                        await docker.images.delete(image_id)
+                    if filename:
+                        filepath = path / filename
+                        try:
+                            q: janus.Queue[bytes | Sentinel] = janus.Queue(
+                                maxsize=DEFAULT_INFLIGHT_CHUNKS
+                            )
+                            async with docker._query(f"images/{image_id}/get") as tb_resp:
+                                with gzip.open(filepath, "wb") as fileobj:
+                                    write_task = loop.run_in_executor(
+                                        None,
+                                        functools.partial(
+                                            _write_chunks,
+                                            fileobj,
+                                            q.sync_q,
+                                        ),
+                                    )
+                                    try:
+                                        await asyncio.sleep(0)  # let write_task get started
+                                        async for chunk in tb_resp.content.iter_chunked(
+                                            DEFAULT_CHUNK_SIZE
+                                        ):
+                                            await q.async_q.put(chunk)
+                                    finally:
+                                        await q.async_q.put(Sentinel.TOKEN)
+                                        await write_task
+                        finally:
+                            await docker.images.delete(image_id)
                 finally:
                     await docker.close()
         except asyncio.TimeoutError:
             log.warning("Session is already being committed.")
 
-    async def accept_file(self, filename: str, filedata: bytes):
+    @override
+    async def accept_file(self, container_path: os.PathLike | str, filedata: bytes) -> None:
         loop = current_loop()
-        work_dir = self.agent_config["container"]["scratch-root"] / str(self.kernel_id) / "work"
+        container_home_path = PurePosixPath("/home/work")
         try:
-            # create intermediate directories in the path
-            dest_path = (work_dir / filename).resolve(strict=False)
-            parent_path = dest_path.parent
-        except ValueError:  # parent_path does not start with work_dir!
-            raise AssertionError("malformed upload filename and path.")
+            home_relpath = PurePosixPath(container_path).relative_to(container_home_path)
+        except ValueError:
+            raise PermissionError("Not allowed to upload files outside /home/work")
+        host_work_dir: Path = (
+            self.agent_config["container"]["scratch-root"] / str(self.kernel_id) / "work"
+        )
+        host_abspath = (host_work_dir / home_relpath).resolve(strict=False)
+        if not host_abspath.is_relative_to(host_work_dir):
+            raise PermissionError("Not allowed to upload files outside /home/work")
 
         def _write_to_disk():
-            parent_path.mkdir(parents=True, exist_ok=True)
-            dest_path.write_bytes(filedata)
+            host_abspath.parent.mkdir(parents=True, exist_ok=True)
+            host_abspath.write_bytes(filedata)
 
         try:
             await loop.run_in_executor(None, _write_to_disk)
-        except FileNotFoundError:
-            log.error(
-                "{0}: writing uploaded file failed: {1} -> {2}", self.kernel_id, filename, dest_path
+        except OSError as e:
+            raise RuntimeError(
+                "{0}: writing uploaded file failed: {1} -> {2} ({3})".format(
+                    self.kernel_id,
+                    container_path,
+                    host_abspath,
+                    repr(e),
+                )
             )
 
-    async def download_file(self, filepath: str):
+    @override
+    async def download_file(self, container_path: os.PathLike | str) -> bytes:
         container_id = self.data["container_id"]
+
+        container_home_path = PurePosixPath("/home/work")
+        container_abspath = PurePosixPath(os.path.normpath(container_home_path / container_path))
+        if not container_abspath.is_relative_to(container_home_path):
+            raise PermissionError("You cannot download files outside /home/work")
+
         async with closing_async(Docker()) as docker:
             container = docker.containers.container(container_id)
-            home_path = PurePosixPath("/home/work")
             try:
-                abspath = home_path / filepath
-                abspath.relative_to(home_path)
-            except ValueError:
-                raise PermissionError("You cannot download files outside /home/work")
-            try:
-                with await container.get_archive(str(abspath)) as tarobj:
-                    tarobj.fileobj.seek(0, 2)
-                    fsize = tarobj.fileobj.tell()
-                    if fsize > 1048576:
-                        raise ValueError("too large file")
-                    tarbytes = tarobj.fileobj.getvalue()
+                with await container.get_archive(str(container_abspath)) as tarobj:
+                    # FIXME: Replace this API call to a streaming version and cut the download if
+                    #        the downloaded size exceeds the limit.
+                    assert tarobj.fileobj is not None
+                    tar_fobj = cast(io.BufferedIOBase, tarobj.fileobj)
+                    tar_fobj.seek(0, io.SEEK_END)
+                    tar_size = tar_fobj.tell()
+                    if tar_size > 1048576:
+                        raise ValueError("Too large archive file exceeding 1 MiB")
+                    tar_fobj.seek(0, io.SEEK_SET)
+                    tarbytes = tar_fobj.read()
             except DockerError:
-                log.warning("Could not found the file: {0}", abspath)
-                raise FileNotFoundError(f"Could not found the file: {abspath}")
+                raise RuntimeError(f"Could not download the archive to: {container_abspath}")
         return tarbytes
 
-    async def download_single(self, filepath: str):
+    @override
+    async def download_single(self, container_path: os.PathLike | str) -> bytes:
         container_id = self.data["container_id"]
+
+        container_home_path = PurePosixPath("/home/work")
+        container_abspath = PurePosixPath(os.path.normpath(container_home_path / container_path))
+        if not container_abspath.is_relative_to(container_home_path):
+            raise PermissionError("You cannot download files outside /home/work")
+
         async with closing_async(Docker()) as docker:
             container = docker.containers.container(container_id)
-            home_path = PurePosixPath("/home/work")
             try:
-                abspath = home_path / filepath
-                abspath.relative_to(home_path)
-            except ValueError:
-                raise PermissionError("You cannot download files outside /home/work")
-            try:
-                with await container.get_archive(str(abspath)) as tarobj:
-                    tarobj.fileobj.seek(0, 2)
-                    fsize = tarobj.fileobj.tell()
-                    if fsize > 1048576:
-                        raise ValueError("too large file")
-                    tarobj.fileobj.seek(0)
-                    inner_file = tarobj.extractfile(tarobj.getnames()[0])
-                    if inner_file:
-                        tarbytes = inner_file.read()
-                    else:
-                        log.warning("Could not found the file: {0}", abspath)
-                        raise FileNotFoundError(f"Could not found the file: {abspath}")
+                with await container.get_archive(str(container_abspath)) as tarobj:
+                    # FIXME: Replace this API call to a streaming version and cut the download if
+                    #        the downloaded size exceeds the limit.
+                    assert tarobj.fileobj is not None
+                    tar_fobj = cast(io.BufferedIOBase, tarobj.fileobj)
+                    tar_fobj.seek(0, io.SEEK_END)
+                    tar_size = tar_fobj.tell()
+                    if tar_size > 1048576:
+                        raise ValueError("Too large archive file exceeding 1 MiB")
+                    tar_fobj.seek(0, io.SEEK_SET)
+                    if len(tarobj.getnames()) > 1:
+                        raise ValueError(
+                            f"Expected a single-file archive but found multiple files from {container_abspath}"
+                        )
+                    inner_fname = tarobj.getnames()[0]
+                    inner_fobj = tarobj.extractfile(inner_fname)
+                    if not inner_fobj:
+                        raise ValueError(
+                            f"Could not read {inner_fname!r} the archive file {container_abspath}"
+                        )
+                    # FYI: To get the size of extracted file, seek and tell with inner_fobj.
+                    content_bytes = inner_fobj.read()
             except DockerError:
-                log.warning("Could not found the file: {0}", abspath)
-                raise FileNotFoundError(f"Could not found the file: {abspath}")
-        return tarbytes
+                raise RuntimeError(f"Could not download the archive to: {container_abspath}")
+        return content_bytes
 
-    async def list_files(self, container_path: str):
+    @override
+    async def list_files(self, container_path: os.PathLike | str):
         container_id = self.data["container_id"]
 
         # Confine the lookable paths in the home directory
-        home_path = Path("/home/work").resolve()
-        resolved_path = (home_path / container_path).resolve()
-
-        if str(os.path.commonpath([resolved_path, home_path])) != str(home_path):
+        container_home_path = PurePosixPath("/home/work")
+        container_abspath = PurePosixPath(os.path.normpath(container_home_path / container_path))
+        if not container_abspath.is_relative_to(container_home_path):
             raise PermissionError("You cannot list files outside /home/work")
 
         # Gather individual file information in the target path.
@@ -335,7 +401,7 @@ class DockerKernel(AbstractKernel):
                 "/opt/backend.ai/bin/python",
                 "-c",
                 code,
-                str(container_path),
+                str(container_abspath),
             ],
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,

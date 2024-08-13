@@ -39,7 +39,7 @@ CAP_FAST_FS_SIZE: Final = "fast-fs-size"  # ability to scan filesystem size fast
 CAP_FAST_SCAN: Final = "fast-scan"  # ability to scan number of files in vFolder fast (e.g. by API)
 CAP_FAST_SIZE: Final = "fast-size"  # ability to scan vFolder size fast (e.g. by API)
 
-log = BraceStyleAdapter(logging.getLogger(__spec__.name))  # type: ignore[name-defined]
+log = BraceStyleAdapter(logging.getLogger(__spec__.name))
 
 
 class AbstractQuotaModel(metaclass=ABCMeta):
@@ -86,7 +86,7 @@ class AbstractQuotaModel(metaclass=ABCMeta):
     async def update_quota_scope(
         self,
         quota_scope_id: QuotaScopeID,
-        options: QuotaConfig,
+        config: QuotaConfig,
     ) -> None:
         """
         Update the quota option of the given quota scope.
@@ -153,7 +153,8 @@ class AbstractFSOpModel(metaclass=ABCMeta):
     def scan_tree(
         self,
         path: Path,
-        recursive=False,
+        *,
+        recursive: bool = True,
     ) -> AsyncIterator[DirEntry]:
         """
         Iterates over all files within the given path recursively.
@@ -320,7 +321,11 @@ class AbstractVolume(metaclass=ABCMeta):
 
     @abstractmethod
     def scandir(
-        self, vfid: VFolderID, relpath: PurePosixPath, recursive=True
+        self,
+        vfid: VFolderID,
+        relpath: PurePosixPath,
+        *,
+        recursive: bool = True,
     ) -> AsyncIterator[DirEntry]:
         pass
 
@@ -404,6 +409,7 @@ class AbstractVolume(metaclass=ABCMeta):
         self,
         vfid: VFolderID,
         relpaths: Sequence[PurePosixPath],
+        *,
         recursive: bool = False,
     ) -> None:
         pass

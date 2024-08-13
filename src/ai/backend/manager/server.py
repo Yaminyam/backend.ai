@@ -45,6 +45,7 @@ from ai.backend.common.defs import (
     REDIS_STREAM_LOCK,
 )
 from ai.backend.common.events import EventDispatcher, EventProducer, KernelLifecycleEventReason
+from ai.backend.common.events_experimental import EventDispatcher as ExperimentalEventDispatcher
 from ai.backend.common.logging import BraceStyleAdapter, Logger
 from ai.backend.common.plugin.hook import ALL_COMPLETED, PASSED, HookPluginContext
 from ai.backend.common.plugin.monitor import INCREMENT
@@ -112,6 +113,14 @@ VALID_VERSIONS: Final = frozenset([
     # added user & project resource policies
     # deprecated per-vfolder quota configs (BREAKING)
     "v7.20230615",
+    # added /vfolders API set to replace name-based refs to ID-based refs to work with vfolders
+    # set pending deprecation for the legacy /folders API set
+    # added vfolder trash bin APIs
+    # changed the image registry management API to allow per-project registry configs (BREAKING)
+    # TODO: added an initial version of RBAC for projects and vfolders
+    # TODO: replaced keypair-based resource policies to user-based resource policies
+    # TODO: began SSO support using per-external-service keypairs (e.g., for FastTrack)
+    "v8.20240315",
 ])
 LATEST_REV_DATES: Final = {
     1: "20160915",
@@ -121,10 +130,11 @@ LATEST_REV_DATES: Final = {
     5: "20191215",
     6: "20230315",
     7: "20230615",
+    8: "20240315",
 }
-LATEST_API_VERSION: Final = "v7.20230615"
+LATEST_API_VERSION: Final = "v8.20240315"
 
-log = BraceStyleAdapter(logging.getLogger(__spec__.name))  # type: ignore[name-defined]
+log = BraceStyleAdapter(logging.getLogger(__spec__.name))
 
 PUBLIC_INTERFACES: Final = [
     "pidx",
@@ -391,11 +401,17 @@ async def distributed_lock_ctx(root_ctx: RootContext) -> AsyncIterator[None]:
 
 @actxmgr
 async def event_dispatcher_ctx(root_ctx: RootContext) -> AsyncIterator[None]:
+    event_dispatcher_cls: type[EventDispatcher] | type[ExperimentalEventDispatcher]
+    if root_ctx.local_config["manager"].get("use-experimental-redis-event-dispatcher"):
+        event_dispatcher_cls = ExperimentalEventDispatcher
+    else:
+        event_dispatcher_cls = EventDispatcher
+
     root_ctx.event_producer = await EventProducer.new(
         root_ctx.shared_config.data["redis"],
         db=REDIS_STREAM_DB,
     )
-    root_ctx.event_dispatcher = await EventDispatcher.new(
+    root_ctx.event_dispatcher = await event_dispatcher_cls.new(
         root_ctx.shared_config.data["redis"],
         db=REDIS_STREAM_DB,
         log_events=root_ctx.local_config["debug"]["log-events"],
@@ -724,10 +740,13 @@ def init_lock_factory(root_ctx: RootContext) -> DistributedLockFactory:
         case "redlock":
             from ai.backend.common.lock import RedisLock
 
+            redlock_config = root_ctx.local_config["manager"]["redlock-config"]
+
             return lambda lock_id, lifetime_hint: RedisLock(
                 str(lock_id),
                 root_ctx.redis_lock,
                 lifetime=min(lifetime_hint * 2, lifetime_hint + 30),
+                lock_retry_interval=redlock_config["lock_retry_interval"],
             )
         case "etcd":
             from ai.backend.common.lock import EtcdLock
@@ -735,6 +754,14 @@ def init_lock_factory(root_ctx: RootContext) -> DistributedLockFactory:
             return lambda lock_id, lifetime_hint: EtcdLock(
                 str(lock_id),
                 root_ctx.shared_config.etcd,
+                lifetime=min(lifetime_hint * 2, lifetime_hint + 30),
+            )
+        case "etcetra":
+            from ai.backend.common.lock import EtcetraLock
+
+            return lambda lock_id, lifetime_hint: EtcetraLock(
+                str(lock_id),
+                root_ctx.shared_config.etcetra_etcd,
                 lifetime=min(lifetime_hint * 2, lifetime_hint + 30),
             )
         case other:
@@ -952,16 +979,21 @@ async def server_main_logwrapper(
 )
 @click.option(
     "--log-level",
-    type=click.Choice([*LogSeverity.__members__.keys()], case_sensitive=False),
-    default="INFO",
+    type=click.Choice([*LogSeverity], case_sensitive=False),
+    default=LogSeverity.INFO,
     help="Set the logging verbosity level",
 )
 @click.pass_context
-def main(ctx: click.Context, config_path: Path, log_level: str, debug: bool = False) -> None:
+def main(
+    ctx: click.Context,
+    config_path: Path,
+    log_level: LogSeverity,
+    debug: bool = False,
+) -> None:
     """
     Start the manager service as a foreground process.
     """
-    cfg = load_config(config_path, "DEBUG" if debug else log_level)
+    cfg = load_config(config_path, LogSeverity.DEBUG if debug else log_level)
 
     if ctx.invoked_subcommand is None:
         cfg["manager"]["pid-file"].write_text(str(os.getpid()))

@@ -43,7 +43,7 @@ if TYPE_CHECKING:
     from ..abc import AbstractVolume
     from ..context import RootContext
 
-log = BraceStyleAdapter(logging.getLogger(__spec__.name))  # type: ignore[name-defined]
+log = BraceStyleAdapter(logging.getLogger(__spec__.name))
 
 DEFAULT_CHUNK_SIZE: Final = 256 * 1024  # 256 KiB
 DEFAULT_INFLIGHT_CHUNKS: Final = 8
@@ -216,7 +216,7 @@ async def download(request: web.Request) -> web.StreamResponse:
 async def download_directory_as_archive(
     request: web.Request,
     file_path: Path,
-    zip_filename: str = None,
+    zip_filename: str | None = None,
 ) -> web.StreamResponse:
     """
     Serve a directory as a zip archive on the fly.
