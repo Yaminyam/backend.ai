@@ -164,7 +164,7 @@ jobs:
       with:
         named-caches-hash: ${{ hashFiles('python*.lock', 'tools/*.lock') }}
         cache-lmdb-store: 'true'
-    - name: PostgreSQL
+    - name: Prepare DB
       run: docker compose -f docker-compose.halfstack-main.yml up -d backendai-half-db --wait
     - name: Pants export
       run: pants export --resolve=python-default
