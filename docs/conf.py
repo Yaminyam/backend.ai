@@ -171,7 +171,7 @@ latex_elements = {
     "fontpkg": "\n".join([
         "\\usepackage{fontspec}",
         "\\setmainfont{Pretendard}[" +
-        "  Path = fonts/Pretendard-1.3.9/public/static/, " +
+        "  Path = fonts/Pretendard/public/static/, " +
         "  Extension = .otf, " +
         "  UprightFont = *-Regular, " +
         "  BoldFont = *-Bold, " +
