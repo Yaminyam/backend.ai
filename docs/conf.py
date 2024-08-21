@@ -175,7 +175,7 @@ latex_elements = {
         "  Extension = .otf, " +
         "  UprightFont = *-Regular, " +
         "  BoldFont = *-Bold, " +
-        "  ItalicFont = *, " +
+        "  ItalicFont = *-Regular, " +
         "  BoldItalicFont = *-Bold" +
         "]",
         "\\setmonofont{D2Coding}[" +
