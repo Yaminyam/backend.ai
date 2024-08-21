@@ -171,7 +171,7 @@ latex_elements = {
     "fontpkg": "\n".join([
         "\\usepackage{fontspec}",
         "\\setmainfont{Pretendard}[" +
-        "  Path = fonts/Pretendard/public/static/, " +
+        "  Path = ./fonts/Pretendard/public/static/, " +
         "  Extension = .otf, " +
         "  UprightFont = *-Regular, " +
         "  BoldFont = *-Bold, " +
@@ -179,7 +179,7 @@ latex_elements = {
         "  BoldItalicFont = *-Bold" +
         "]",
         "\\setmonofont{D2Coding}[" +
-        "  Path = fonts/D2Coding-*/D2Coding/, " +
+        "  Path = ./fonts/D2Coding-*/D2Coding/, " +
         "  Extension = .ttf, " +
         "  UprightFont = D2Coding-*, " + 
         "  BoldFont = D2CodingBold-*, " +
