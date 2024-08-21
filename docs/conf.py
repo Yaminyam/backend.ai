@@ -179,12 +179,12 @@ latex_elements = {
         "  BoldItalicFont = *-Bold" +
         "]",
         "\\setmonofont{D2Coding}[" +
-        "  Path = ./fonts/D2Coding-*/D2Coding/, " +
+        "  Path = /home/docs/checkouts/readthedocs.org/user_builds/backendai/checkouts/latest/fonts/D2Coding/D2Coding, " +
         "  Extension = .ttf, " +
-        "  UprightFont = D2Coding-*, " + 
-        "  BoldFont = D2CodingBold-*, " +
-        "  ItalicFont = *, " +
-        "  BoldItalicFont = D2CodingBold-*" +
+        "  UprightFont = *-Ver1.3.2-20180524, " + 
+        "  BoldFont = *Bold-Ver1.3.2-20180524, " +
+        "  ItalicFont = *-Ver1.3.2-20180524, " +
+        "  BoldItalicFont = *Bold-Ver1.3.2-20180524" +
         "]",
         "\\usepackage{kotex}",
         ""
