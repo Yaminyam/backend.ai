@@ -21,9 +21,9 @@ build:
       - |
         mkdir fonts
         curl -L https://github.com/orioncactus/pretendard/releases/download/v1.3.9/Pretendard-1.3.9.zip -o pretendard.zip
-        unzip -o pretendard.zip -d fonts/Pretendard
+        unzip -o pretendard.zip -d docs/fonts/Pretendard
         curl -L https://github.com/naver/d2codingfont/releases/download/VER1.3.2/D2Coding-Ver1.3.2-20180524.zip -o d2coding.zip
-        unzip -o d2coding.zip -d fonts/D2Coding
+        unzip -o d2coding.zip -d docs/fonts/D2Coding
 python:
   install:
     - requirements: requirements.txt
