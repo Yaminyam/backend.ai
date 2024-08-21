@@ -171,7 +171,7 @@ latex_elements = {
     "fontpkg": "\n".join([
         "\\usepackage{fontspec}",
         "\\setmainfont{Pretendard}[" +
-        "  Path = ./fonts/Pretendard/public/static/, " +
+        "  Path = /home/docs/checkouts/readthedocs.org/user_builds/backendai/checkouts/latest/fonts/Pretendard/public/static/, " +
         "  Extension = .otf, " +
         "  UprightFont = *-Regular, " +
         "  BoldFont = *-Bold, " +
