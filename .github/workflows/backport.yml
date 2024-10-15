@@ -44,6 +44,8 @@ jobs:
           echo "labels<<EOF" >> $GITHUB_OUTPUT
           echo "$labels" >> $GITHUB_OUTPUT
           echo "EOF" >> $GITHUB_OUTPUT
+        env:
+          GH_TOKEN: ${{ github.token }}
       - name: Check if this is a merged pr commit
         run: |
           if [[ -z "${{ steps.commit.outputs.pr_number }}" ]]; then
