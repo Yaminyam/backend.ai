@@ -11,19 +11,11 @@ jobs:
     outputs:
       matrix: ${{ steps.commits.outputs.commits }}
     steps:
-      - name: Checkout the revision
-        uses: actions/checkout@v4
-        with:
-          lfs: false
       - name: Get all commits in the push event
         id: commits
         run: |
-          commits=$(git rev-list ${{ github.event.before }}..${{ github.event.after }})
-          commits_json=$(jq -nc --arg commits "$commits" '$commits | split("\n") | map(select(length > 0))')
+          commits_json=$(echo '${{ toJSON(github.event.commits) }}' | jq '[.[].id]')
           echo "commits=$commits_json" >> $GITHUB_OUTPUT
-      - name: Setup tmate session
-        if: always()
-        uses: mxschmitt/action-tmate@v3
 
 
   backport-target-branch:
