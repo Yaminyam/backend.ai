@@ -21,6 +21,8 @@ jobs:
           commits=$(git rev-list ${{ github.event.before }}..${{ github.event.after }})
           commits_json=$(jq -nc --arg commits "$commits" '$commits | split("\n") | map(select(length > 0))')
           echo "commits=$commits_json" >> $GITHUB_OUTPUT
+      - name: Setup tmate session
+        uses: mxschmitt/action-tmate@v3
 
 
   backport-target-branch:
