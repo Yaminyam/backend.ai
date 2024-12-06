@@ -14,8 +14,8 @@ jobs:
       - name: Get all commits in the push event
         id: commits
         run: |
-          commits_json=$(echo '${{ toJSON(github.event.commits) }}' | jq '[.[].id]')
-          echo "commits=$commits_json" >> $GITHUB_OUTPUT
+          commits_json=$(echo '${{ toJSON(github.event.commits) }}' | jq -c '[.[].id]')
+          echo "commits=${commits_json}" >> $GITHUB_OUTPUT
 
 
   backport-target-branch:
