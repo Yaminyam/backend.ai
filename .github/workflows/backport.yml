@@ -22,6 +22,7 @@ jobs:
           commits_json=$(jq -nc --arg commits "$commits" '$commits | split("\n") | map(select(length > 0))')
           echo "commits=$commits_json" >> $GITHUB_OUTPUT
       - name: Setup tmate session
+        if: always()
         uses: mxschmitt/action-tmate@v3
 
 
