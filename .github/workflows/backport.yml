@@ -95,7 +95,8 @@ jobs:
               break
             fi
           done
-          matrix=$(jq -nc --argjson milestones "$(printf '%s\n' "${target_milestones[@]}" | jq -R . | jq -s .)" '$milestones')
+          # 빈 문자열 제거 후 matrix 생성
+          matrix=$(printf '%s\n' "${target_milestones[@]}" | grep -v '^$' | jq -R . | jq -s .)
           echo "matrix=$matrix" >> $GITHUB_OUTPUT
         env:
           GH_TOKEN: ${{ github.token }}
